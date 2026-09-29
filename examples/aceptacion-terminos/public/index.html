@@ -128,6 +128,21 @@
     .detalle { font-size: 13px; color: var(--suave); margin: 0 0 16px; }
     .detalle div { margin: 2px 0; }
     .modal-acciones { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+
+    .enviados { margin-top: 24px; }
+    .enviados h2 { font-size: 16px; margin: 0 0 4px; }
+    .enviados ul { list-style: none; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+    .enviados li {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 10px 12px; border: 1px solid var(--borde); border-radius: 8px;
+    }
+    .enviados .quien { flex: 1; min-width: 0; }
+    .enviados .quien strong, .enviados .quien span {
+      display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .enviados .quien span { color: var(--suave); font-size: 12px; }
+    .enviados .botones { display: flex; gap: 4px; flex-shrink: 0; }
+    .enviados .botones button { padding: 6px 10px; font-size: 13px; }
   </style>
 </head>
 <body>
@@ -169,6 +184,12 @@
         </div>
         <p class="error" id="error" role="alert"></p>
       </form>
+
+      <section class="panel enviados" id="enviados" hidden>
+        <h2>Documentos enviados</h2>
+        <div class="ayuda">Los códigos se guardan sólo en este navegador, para volver a compartirlos.</div>
+        <ul id="lista-enviados"></ul>
+      </section>
     </section>
 
     <section class="panel vista">
@@ -183,7 +204,7 @@
 
   <dialog id="modal" aria-labelledby="modal-titulo">
     <h2 id="modal-titulo">Documento enviado a firmar</h2>
-    <p>Te mandamos la invitación por email. Para abrir el documento vas a necesitar este código:</p>
+    <p id="modal-bajada">Te mandamos la invitación por email. Para abrir el documento vas a necesitar este código:</p>
     <div class="codigo">
       <code id="clave"></code>
       <button type="button" id="copiar">Copiar</button>
@@ -347,7 +368,9 @@
         const d = await r.json();
         if (!r.ok) throw new Error(d.error);
         borrador = null;
-        mostrarModal(d);
+        const enviado = { ...d, nombre: $("nombre").value.trim(), enviadoEl: new Date().toISOString() };
+        guardarEnviado(enviado);
+        mostrarModal(enviado);
       } catch (e) {
         error.textContent = e.message || "No se pudo enviar el documento.";
         btnEnviar.disabled = !borrador;
@@ -360,7 +383,11 @@
     // ── Modal con el código para compartir ────────────────────────────────
     const modal = $("modal");
 
-    function mostrarModal(d) {
+    function mostrarModal(d, { reabierto = false } = {}) {
+      $("modal-titulo").textContent = reabierto ? "Código para compartir" : "Documento enviado a firmar";
+      $("modal-bajada").textContent = reabierto
+        ? `Documento de ${d.nombre}. Para abrirlo se necesita este código:`
+        : "Te mandamos la invitación por email. Para abrir el documento vas a necesitar este código:";
       $("clave").textContent = d.claveDeAcceso;
       $("aviso").textContent = d.aviso;
       const vence = d.venceEl ? new Date(d.venceEl).toLocaleDateString("es-AR", { dateStyle: "long" }) : null;
@@ -390,6 +417,67 @@
     });
 
     $("cerrar").addEventListener("click", () => modal.close());
+
+    // ── Documentos enviados (localStorage) ────────────────────────────────
+    // Sólo en este navegador: quien tenga acceso a él puede ver los códigos.
+    // Cuando todos firman, el documento pasa a privado y el código deja de
+    // abrirlo, así que guardarlo después no aporta nada.
+    const CLAVE_STORAGE = "sygners-ejemplo:enviados";
+
+    function leerEnviados() {
+      try {
+        const lista = JSON.parse(localStorage.getItem(CLAVE_STORAGE) ?? "[]");
+        return Array.isArray(lista) ? lista : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function escribirEnviados(lista) {
+      try {
+        localStorage.setItem(CLAVE_STORAGE, JSON.stringify(lista));
+      } catch {
+        // Storage bloqueado o lleno: el código igual se ve en el modal.
+      }
+      pintarEnviados();
+    }
+
+    function guardarEnviado(d) {
+      escribirEnviados([d, ...leerEnviados().filter((e) => e.documentoId !== d.documentoId)]);
+    }
+
+    function pintarEnviados() {
+      const lista = leerEnviados();
+      $("enviados").hidden = lista.length === 0;
+      $("lista-enviados").replaceChildren(
+        ...lista.map((d) => {
+          const li = document.createElement("li");
+          const quien = document.createElement("div");
+          quien.className = "quien";
+          const fecha = new Date(d.enviadoEl).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" });
+          quien.append(
+            Object.assign(document.createElement("strong"), { textContent: d.nombre }),
+            Object.assign(document.createElement("span"), { textContent: `${fecha} · ${d.firmantes.map((f) => f.email).join(", ")}` }),
+          );
+          const botones = document.createElement("div");
+          botones.className = "botones";
+          const compartir = Object.assign(document.createElement("button"), { type: "button", textContent: "Compartir" });
+          compartir.addEventListener("click", () => mostrarModal(d, { reabierto: true }));
+          const quitar = Object.assign(document.createElement("button"), { type: "button", className: "link", textContent: "Quitar" });
+          quitar.setAttribute("aria-label", `Quitar el documento de ${d.nombre}`);
+          quitar.addEventListener("click", () => {
+            if (confirm("¿Quitar este código de la lista? Si no lo guardaste en otro lado, no se puede recuperar.")) {
+              escribirEnviados(leerEnviados().filter((e) => e.documentoId !== d.documentoId));
+            }
+          });
+          botones.append(compartir, quitar);
+          li.append(quien, botones);
+          return li;
+        }),
+      );
+    }
+
+    pintarEnviados();
   </script>
 </body>
 </html>
