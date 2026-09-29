@@ -1,0 +1,14 @@
+{
+  "name": "ejemplo-aceptacion-terminos",
+  "private": true,
+  "type": "module",
+  "description": "Ejemplo: el usuario carga nombre, DNI y firma de conformidad, ve el PDF y lo envía a firmar con sygners.",
+  "engines": { "node": ">=20.12" },
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "@sygners/sdk": "file:../..",
+    "pdf-lib": "^1.17.1"
+  }
+}

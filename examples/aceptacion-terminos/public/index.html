@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aceptación de términos</title>
+  <style>
+    :root {
+      --fondo: #f5f6f8;
+      --panel: #ffffff;
+      --texto: #1f2128;
+      --suave: #6b7280;
+      --borde: #d9dce3;
+      --acento: #2f5bea;
+      --acento-texto: #ffffff;
+      --error: #c0392b;
+      --aviso-fondo: #fff7e6;
+      --aviso-borde: #f0c36d;
+      --radio: 10px;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body {
+      margin: 0;
+      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--fondo);
+      color: var(--texto);
+    }
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 32px 16px;
+      display: grid;
+      grid-template-columns: minmax(0, 380px) minmax(0, 1fr);
+      gap: 24px;
+    }
+    @media (max-width: 860px) { main { grid-template-columns: minmax(0, 1fr); } }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .bajada { color: var(--suave); margin: 0 0 20px; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--borde);
+      border-radius: var(--radio);
+      padding: 20px;
+    }
+    label { display: block; font-weight: 600; font-size: 13px; margin: 14px 0 6px; }
+    input[type=text], input[type=email] {
+      width: 100%;
+      padding: 10px 12px;
+      font: inherit;
+      border: 1px solid var(--borde);
+      border-radius: 8px;
+      background: #fff;
+    }
+    input:focus-visible, button:focus-visible, canvas:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+    .firma-caja { position: relative; }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 150px;
+      border: 1px dashed var(--borde);
+      border-radius: 8px;
+      background: #fff;
+      touch-action: none;
+      cursor: crosshair;
+    }
+    .firma-guia {
+      position: absolute; left: 16px; right: 16px; bottom: 36px;
+      border-bottom: 1px solid var(--borde);
+      pointer-events: none;
+    }
+    .firma-placeholder {
+      position: absolute; inset: 0; display: grid; place-items: center;
+      color: var(--suave); font-size: 13px; pointer-events: none;
+    }
+    .fila { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+    .ayuda { color: var(--suave); font-size: 12px; }
+    .check { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; font-size: 14px; margin-top: 18px; }
+    .check input { margin-top: 3px; }
+    button {
+      font: inherit; font-weight: 600;
+      padding: 11px 16px;
+      border-radius: 8px;
+      border: 1px solid var(--borde);
+      background: #fff;
+      color: var(--texto);
+      cursor: pointer;
+    }
+    button.primario { background: var(--acento); border-color: var(--acento); color: var(--acento-texto); }
+    button.link { border: 0; background: none; padding: 4px 0; color: var(--acento); font-size: 13px; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .acciones { display: grid; gap: 10px; margin-top: 20px; }
+    .error { color: var(--error); font-size: 13px; min-height: 20px; margin: 10px 0 0; }
+    .vista { display: flex; flex-direction: column; min-height: 600px; padding: 0; overflow: hidden; }
+    .vista header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 16px; border-bottom: 1px solid var(--borde); font-weight: 600;
+    }
+    .vista header a { font-weight: 400; font-size: 13px; color: var(--acento); }
+    .vista iframe { flex: 1; width: 100%; border: 0; min-height: 560px; }
+    .vacio {
+      flex: 1; display: grid; place-items: center; text-align: center;
+      color: var(--suave); padding: 32px;
+    }
+
+    dialog {
+      width: min(460px, calc(100vw - 32px));
+      border: 0; border-radius: 14px; padding: 24px;
+      color: var(--texto); background: var(--panel);
+      box-shadow: 0 20px 60px rgba(0,0,0,.25);
+    }
+    dialog::backdrop { background: rgba(15, 18, 30, .5); }
+    dialog h2 { margin: 0 0 6px; font-size: 20px; }
+    dialog p { margin: 0 0 14px; color: var(--suave); }
+    .codigo {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 14px 16px; border: 1px solid var(--borde); border-radius: 10px;
+      background: var(--fondo);
+    }
+    .codigo code {
+      font: 600 22px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: .08em; word-break: break-all;
+    }
+    .aviso {
+      margin: 16px 0; padding: 12px 14px; font-size: 13px;
+      background: var(--aviso-fondo); border: 1px solid var(--aviso-borde); border-radius: 8px;
+    }
+    .detalle { font-size: 13px; color: var(--suave); margin: 0 0 16px; }
+    .detalle div { margin: 2px 0; }
+    .modal-acciones { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+  </style>
+</head>
+<body>
+  <main>
+    <section>
+      <h1>Aceptación de términos</h1>
+      <p class="bajada">Completá tus datos y firmá en el recuadro. Vas a ver el documento antes de enviarlo.</p>
+
+      <form id="form" class="panel" novalidate>
+        <label for="nombre">Nombre y apellido</label>
+        <input id="nombre" name="nombre" type="text" autocomplete="name" required>
+
+        <label for="dni">DNI</label>
+        <input id="dni" name="dni" type="text" inputmode="numeric" placeholder="30.123.456" required>
+
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="email" required>
+        <div class="ayuda">Ahí te llega la invitación de sygners para firmar.</div>
+
+        <label for="firma">Firma de conformidad</label>
+        <div class="firma-caja">
+          <canvas id="firma" tabindex="0" aria-label="Recuadro para firmar"></canvas>
+          <div class="firma-guia"></div>
+          <div class="firma-placeholder" id="firma-placeholder">Firmá acá con el mouse o el dedo</div>
+        </div>
+        <div class="fila">
+          <span class="ayuda">Tu firma queda estampada en el PDF.</span>
+          <button type="button" class="link" id="limpiar">Borrar firma</button>
+        </div>
+
+        <label class="check">
+          <input type="checkbox" id="acepto" required>
+          <span>Leí y acepto los términos y condiciones.</span>
+        </label>
+
+        <div class="acciones">
+          <button type="submit" id="previsualizar">Ver documento</button>
+          <button type="button" class="primario" id="enviar" disabled>Enviar a firmar</button>
+        </div>
+        <p class="error" id="error" role="alert"></p>
+      </form>
+    </section>
+
+    <section class="panel vista">
+      <header>
+        <span>Vista previa</span>
+        <a id="abrir" href="#" target="_blank" rel="noopener" hidden>Abrir en otra pestaña</a>
+      </header>
+      <div class="vacio" id="vacio">Completá el formulario y tocá “Ver documento”.</div>
+      <iframe id="pdf" title="Vista previa del PDF" hidden></iframe>
+    </section>
+  </main>
+
+  <dialog id="modal" aria-labelledby="modal-titulo">
+    <h2 id="modal-titulo">Documento enviado a firmar</h2>
+    <p>Te mandamos la invitación por email. Para abrir el documento vas a necesitar este código:</p>
+    <div class="codigo">
+      <code id="clave"></code>
+      <button type="button" id="copiar">Copiar</button>
+    </div>
+    <div class="aviso" id="aviso"></div>
+    <div class="detalle" id="detalle"></div>
+    <div class="modal-acciones">
+      <button type="button" id="whatsapp">Compartir por WhatsApp</button>
+      <button type="button" class="primario" id="cerrar">Listo</button>
+    </div>
+  </dialog>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const form = $("form");
+    const error = $("error");
+    const btnPrevia = $("previsualizar");
+    const btnEnviar = $("enviar");
+
+    // ── Firma ─────────────────────────────────────────────────────────────
+    const canvas = $("firma");
+    const ctx = canvas.getContext("2d");
+    let hayFirma = false;
+    let dibujando = false;
+    let anchoCanvas = 0;
+
+    function prepararCanvas() {
+      const r = canvas.getBoundingClientRect();
+      if (Math.round(r.width) === anchoCanvas) return;
+      anchoCanvas = Math.round(r.width);
+      const dpr = Math.max(window.devicePixelRatio || 1, 2);
+      canvas.width = r.width * dpr;
+      canvas.height = r.height * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.lineWidth = 2.2;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = "#101828";
+      marcarFirma(false);
+    }
+
+    function marcarFirma(valor) {
+      hayFirma = valor;
+      $("firma-placeholder").hidden = valor;
+      invalidarVista();
+    }
+
+    function punto(e) {
+      const r = canvas.getBoundingClientRect();
+      return [e.clientX - r.left, e.clientY - r.top];
+    }
+
+    canvas.addEventListener("pointerdown", (e) => {
+      dibujando = true;
+      canvas.setPointerCapture(e.pointerId);
+      const [x, y] = punto(e);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + 0.01, y);
+      ctx.stroke();
+      if (!hayFirma) marcarFirma(true); else invalidarVista();
+    });
+    canvas.addEventListener("pointermove", (e) => {
+      if (!dibujando) return;
+      for (const ev of e.getCoalescedEvents?.() ?? [e]) {
+        const [x, y] = punto(ev);
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    });
+    const terminar = () => { dibujando = false; };
+    canvas.addEventListener("pointerup", terminar);
+    canvas.addEventListener("pointercancel", terminar);
+
+    $("limpiar").addEventListener("click", () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      marcarFirma(false);
+    });
+
+    // Si cambia el ancho del recuadro, el trazo se deformaría: se pide de nuevo.
+    new ResizeObserver(prepararCanvas).observe(canvas);
+
+    // ── Vista previa ──────────────────────────────────────────────────────
+    let borrador = null;
+    let urlPdf = null;
+
+    function invalidarVista() {
+      borrador = null;
+      btnEnviar.disabled = true;
+    }
+    form.addEventListener("input", invalidarVista);
+
+    function datos() {
+      return {
+        nombre: $("nombre").value,
+        dni: $("dni").value,
+        email: $("email").value,
+        firma: canvas.toDataURL("image/png"),
+      };
+    }
+
+    function validar() {
+      if ($("nombre").value.trim().length < 3) return "Ingresá tu nombre y apellido.";
+      if (!/^\d{7,8}$/.test($("dni").value.replace(/[.\s]/g, ""))) return "El DNI tiene que tener 7 u 8 números.";
+      if (!$("email").checkValidity() || !$("email").value) return "El email no es válido.";
+      if (!hayFirma) return "Falta la firma de conformidad.";
+      if (!$("acepto").checked) return "Tenés que aceptar los términos.";
+      return null;
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const problema = validar();
+      error.textContent = problema ?? "";
+      if (problema) return;
+
+      btnPrevia.disabled = true;
+      btnPrevia.textContent = "Generando…";
+      try {
+        const r = await fetch("/api/previsualizar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(datos()),
+        });
+        if (!r.ok) throw new Error((await r.json()).error);
+        const id = r.headers.get("X-Borrador");
+        const pdf = await r.blob();
+
+        if (urlPdf) URL.revokeObjectURL(urlPdf);
+        urlPdf = URL.createObjectURL(pdf);
+        $("pdf").src = urlPdf;
+        $("pdf").hidden = false;
+        $("vacio").hidden = true;
+        $("abrir").href = urlPdf;
+        $("abrir").hidden = false;
+
+        borrador = id;
+        btnEnviar.disabled = false;
+        if (matchMedia("(max-width: 860px)").matches) $("pdf").scrollIntoView({ behavior: "smooth" });
+      } catch (e) {
+        error.textContent = e.message || "No se pudo generar el documento.";
+      } finally {
+        btnPrevia.disabled = false;
+        btnPrevia.textContent = "Ver documento";
+      }
+    });
+
+    // ── Envío ─────────────────────────────────────────────────────────────
+    btnEnviar.addEventListener("click", async () => {
+      if (!borrador) return;
+      error.textContent = "";
+      btnEnviar.disabled = true;
+      btnPrevia.disabled = true;
+      btnEnviar.textContent = "Cifrando y enviando…";
+      try {
+        const r = await fetch("/api/enviar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ borrador }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error);
+        borrador = null;
+        mostrarModal(d);
+      } catch (e) {
+        error.textContent = e.message || "No se pudo enviar el documento.";
+        btnEnviar.disabled = !borrador;
+      } finally {
+        btnPrevia.disabled = false;
+        btnEnviar.textContent = "Enviar a firmar";
+      }
+    });
+
+    // ── Modal con el código para compartir ────────────────────────────────
+    const modal = $("modal");
+
+    function mostrarModal(d) {
+      $("clave").textContent = d.claveDeAcceso;
+      $("aviso").textContent = d.aviso;
+      const vence = d.venceEl ? new Date(d.venceEl).toLocaleDateString("es-AR", { dateStyle: "long" }) : null;
+      $("detalle").replaceChildren(
+        ...[
+          `Documento: ${d.documentoId}`,
+          `Firmantes: ${d.firmantes.map((f) => f.email).join(", ")}`,
+          vence && `Vence el ${vence}`,
+        ].filter(Boolean).map((t) => Object.assign(document.createElement("div"), { textContent: t })),
+      );
+      $("copiar").textContent = "Copiar";
+      modal.showModal();
+    }
+
+    $("copiar").addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText($("clave").textContent);
+        $("copiar").textContent = "¡Copiado!";
+      } catch {
+        getSelection().selectAllChildren($("clave"));
+      }
+    });
+
+    $("whatsapp").addEventListener("click", () => {
+      const texto = `Código para abrir el documento de aceptación de términos en sygners: ${$("clave").textContent}`;
+      window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank", "noopener");
+    });
+
+    $("cerrar").addEventListener("click", () => modal.close());
+  </script>
+</body>
+</html>
