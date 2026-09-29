@@ -1,6 +1,7 @@
-// Arma el PDF de aceptación de términos con los datos y la firma de conformidad
-// que cargó el usuario. El texto de los términos lo pone el servidor: el
-// navegador sólo aporta nombre, DNI y el trazo de la firma.
+// Arma el PDF de aceptación de términos con los datos que cargó el usuario. El
+// texto de los términos lo pone el servidor: el navegador sólo aporta nombre y
+// DNI. Lo que falte sale como un espacio en blanco para completar, así se puede
+// previsualizar antes. La firma no va en el PDF: se hace en sygners.
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 export const TITULO = "Aceptación de Términos y Condiciones";
@@ -32,21 +33,24 @@ const A4 = [595.28, 841.89];
 const MARGEN = 56;
 const TINTA = rgb(0.12, 0.13, 0.16);
 const GRIS = rgb(0.42, 0.45, 0.5);
+const EN_BLANCO_NOMBRE = "______________________________";
+const EN_BLANCO_DNI = "______________";
 
 /**
- * @param {{ nombre: string, dni: string, firmaPng: Uint8Array, fecha: Date }} d
+ * @param {{ nombre?: string, dni?: string, fecha: Date }} d
  * @returns {Promise<Uint8Array>}
  */
-export async function generarPdf({ nombre, dni, firmaPng, fecha }) {
+export async function generarPdf({ nombre: n, dni: d, fecha }) {
+  const nombre = n || EN_BLANCO_NOMBRE;
+  const dni = d || EN_BLANCO_DNI;
   const pdf = await PDFDocument.create();
   pdf.setTitle(TITULO);
-  pdf.setAuthor(nombre);
+  if (n) pdf.setAuthor(n);
   pdf.setCreationDate(fecha);
   pdf.setModificationDate(fecha);
 
   const normal = await pdf.embedFont(StandardFonts.Helvetica);
   const negrita = await pdf.embedFont(StandardFonts.HelveticaBold);
-  const firma = await pdf.embedPng(firmaPng);
 
   const pagina = pdf.addPage(A4);
   const ancho = A4[0] - MARGEN * 2;
@@ -75,19 +79,17 @@ export async function generarPdf({ nombre, dni, firmaPng, fecha }) {
     escribir(cuerpo);
   }
 
-  // Bloque de firma de conformidad, al pie.
-  const altoFirma = 70;
-  const anchoFirma = Math.min(220, (firma.width / firma.height) * altoFirma);
-  const baseFirma = MARGEN + 70;
-  pagina.drawImage(firma, { x: MARGEN, y: baseFirma + 6, width: anchoFirma, height: altoFirma });
-  pagina.drawLine({ start: { x: MARGEN, y: baseFirma }, end: { x: MARGEN + 240, y: baseFirma }, thickness: 0.8, color: GRIS });
+  // Datos de quien presta conformidad, al pie.
+  const basePie = MARGEN + 70;
+  pagina.drawLine({ start: { x: MARGEN, y: basePie }, end: { x: MARGEN + 240, y: basePie }, thickness: 0.8, color: GRIS });
   const pie = [
-    ["Firma de conformidad", negrita],
-    [`Aclaración: ${nombre}`, normal],
-    [`DNI: ${dni}`, normal],
+    ["Conformidad", negrita, TINTA],
+    [`Nombre y apellido: ${nombre}`, normal, TINTA],
+    [`DNI: ${dni}`, normal, TINTA],
+    ["La firma se registra electrónicamente en sygners.", normal, GRIS],
   ];
-  pie.forEach(([texto, fuente], i) => {
-    pagina.drawText(texto, { x: MARGEN, y: baseFirma - 14 - i * 14, size: 9.5, font: fuente, color: TINTA });
+  pie.forEach(([texto, fuente, color], i) => {
+    pagina.drawText(texto, { x: MARGEN, y: basePie - 14 - i * 14, size: 9.5, font: fuente, color });
   });
 
   return pdf.save();

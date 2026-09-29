@@ -1,5 +1,3 @@
 .env
 .env*.local
 links.json
-.vercel
-.env*

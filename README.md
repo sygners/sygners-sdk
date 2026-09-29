@@ -96,5 +96,5 @@ abre. Si esa prueba falla, el SDK no se publica.
 
 ## Ejemplos
 
-- [`examples/aceptacion-terminos`](examples/aceptacion-terminos): el usuario carga nombre, DNI y
-  firma de conformidad, ve el PDF y lo envía a firmar; un modal le muestra el código para compartir.
+- [`examples/aceptacion-terminos`](examples/aceptacion-terminos): el usuario carga nombre y DNI desde
+  un link para firmar, ve el PDF y lo envía a firmar; un modal le muestra el código para compartir.

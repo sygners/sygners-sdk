@@ -26,15 +26,14 @@
       background: var(--fondo);
       color: var(--texto);
     }
-    main {
-      max-width: 1120px;
-      margin: 0 auto;
-      padding: 32px 16px;
+    main { max-width: 1120px; margin: 0 auto; padding: 32px 16px; }
+    .area {
+      position: relative;
       display: grid;
       grid-template-columns: minmax(0, 380px) minmax(0, 1fr);
       gap: 24px;
     }
-    @media (max-width: 860px) { main { grid-template-columns: minmax(0, 1fr); } }
+    @media (max-width: 860px) { .area { grid-template-columns: minmax(0, 1fr); } }
     h1 { font-size: 22px; margin: 0 0 4px; }
     .bajada { color: var(--suave); margin: 0 0 20px; }
     .panel {
@@ -52,28 +51,7 @@
       border-radius: 8px;
       background: #fff;
     }
-    input:focus-visible, button:focus-visible, canvas:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
-    .firma-caja { position: relative; }
-    canvas {
-      display: block;
-      width: 100%;
-      height: 150px;
-      border: 1px dashed var(--borde);
-      border-radius: 8px;
-      background: #fff;
-      touch-action: none;
-      cursor: crosshair;
-    }
-    .firma-guia {
-      position: absolute; left: 16px; right: 16px; bottom: 36px;
-      border-bottom: 1px solid var(--borde);
-      pointer-events: none;
-    }
-    .firma-placeholder {
-      position: absolute; inset: 0; display: grid; place-items: center;
-      color: var(--suave); font-size: 13px; pointer-events: none;
-    }
-    .fila { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+    input:focus-visible, button:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
     .ayuda { color: var(--suave); font-size: 12px; }
     .check { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; font-size: 14px; margin-top: 18px; }
     .check input { margin-top: 3px; }
@@ -129,28 +107,63 @@
     .detalle div { margin: 2px 0; }
     .modal-acciones { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 
-    .enviados { margin-top: 24px; }
-    .enviados h2 { font-size: 16px; margin: 0 0 4px; }
-    .enviados ul { list-style: none; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
-    .enviados li {
+    .listado { margin-top: 24px; }
+    .listado:first-of-type { margin-top: 0; }
+    .listado h2 { font-size: 16px; margin: 0 0 4px; }
+    .listado-cabecera { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+    .listado ul { list-style: none; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+    .listado li {
       display: flex; align-items: center; justify-content: space-between; gap: 12px;
       padding: 10px 12px; border: 1px solid var(--borde); border-radius: 8px;
     }
-    .enviados .quien { flex: 1; min-width: 0; }
-    .enviados .quien strong, .enviados .quien span {
+    .listado .quien { flex: 1; min-width: 0; }
+    .listado .quien strong, .enviados .quien span {
       display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .enviados .quien span { color: var(--suave); font-size: 12px; }
-    .enviados .botones { display: flex; gap: 4px; flex-shrink: 0; }
-    .enviados .botones button { padding: 6px 10px; font-size: 13px; }
+    .listado .quien span { color: var(--suave); font-size: 12px; }
+    .listado .botones { display: flex; gap: 4px; flex-shrink: 0; }
+    .listado .botones button { padding: 6px 10px; font-size: 13px; }
+    .listado .url { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; font-weight: 600; }
+    .listado .vacio-lista { color: var(--suave); font-size: 14px; margin: 16px 0 4px; }
+    .chip { display: inline-block; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 600; vertical-align: 1px; }
+    .chip.pendiente { background: #fff1d6; color: #8a5a00; }
+    .chip.completado { background: #e3e9fd; color: #2442a8; }
+    .chip.firmado { background: #dcf5e6; color: #146c3a; }
+    .chip.sin-firmar { background: #eceef2; color: #4b5260; }
+    .chip.rechazado, .chip.anulado, .chip.vencido { background: #fde4e1; color: #a12a1c; }
+    .chip + .chip { margin-left: 4px; }
+    .estado-link { max-width: 520px; margin: 0 auto; text-align: center; padding: 32px 24px; }
+    .estado-link h2 { margin: 0 0 6px; font-size: 20px; }
+    .estado-link p { margin: 0; color: var(--suave); }
   </style>
 </head>
 <body>
   <main>
-    <section>
-      <h1>Aceptación de términos</h1>
-      <p class="bajada">Completá tus datos y firmá en el recuadro. Vas a ver el documento antes de enviarlo.</p>
+    <h1>Aceptación de términos</h1>
+    <p class="bajada" id="bajada"></p>
 
+    <!-- Sin ?link=: quien emite crea los links y ve si ya se usaron. -->
+    <section class="panel listado" id="links" hidden>
+      <div class="listado-cabecera">
+        <div>
+          <h2>Links para firmar</h2>
+          <div class="ayuda">Cada link sirve para firmar un solo acuerdo. La lista se guarda en este navegador.</div>
+        </div>
+        <button type="button" class="primario" id="crear-link">Crear link para firmar</button>
+      </div>
+      <p class="error" id="error-links" role="alert"></p>
+      <ul id="lista-links"></ul>
+      <p class="vacio-lista" id="links-vacio">Todavía no creaste ningún link.</p>
+    </section>
+
+    <!-- Con ?link= ya usado, inexistente, o recién enviado. -->
+    <section class="panel estado-link" id="estado-link" hidden>
+      <h2 id="estado-titulo"></h2>
+      <p id="estado-texto"></p>
+    </section>
+
+    <!-- Con ?link= pendiente: el formulario para firmar. -->
+    <div class="area" id="area" hidden>
       <form id="form" class="panel" novalidate>
         <label for="nombre">Nombre y apellido</label>
         <input id="nombre" name="nombre" type="text" autocomplete="name" required>
@@ -161,17 +174,6 @@
         <label for="email">Email</label>
         <input id="email" name="email" type="email" autocomplete="email" required>
         <div class="ayuda">Ahí te llega la invitación de sygners para firmar.</div>
-
-        <label for="firma">Firma de conformidad</label>
-        <div class="firma-caja">
-          <canvas id="firma" tabindex="0" aria-label="Recuadro para firmar"></canvas>
-          <div class="firma-guia"></div>
-          <div class="firma-placeholder" id="firma-placeholder">Firmá acá con el mouse o el dedo</div>
-        </div>
-        <div class="fila">
-          <span class="ayuda">Tu firma queda estampada en el PDF.</span>
-          <button type="button" class="link" id="limpiar">Borrar firma</button>
-        </div>
 
         <label class="check">
           <input type="checkbox" id="acepto" required>
@@ -185,20 +187,20 @@
         <p class="error" id="error" role="alert"></p>
       </form>
 
-      <section class="panel enviados" id="enviados" hidden>
-        <h2>Documentos enviados</h2>
-        <div class="ayuda">Los códigos se guardan sólo en este navegador, para volver a compartirlos.</div>
-        <ul id="lista-enviados"></ul>
+      <section class="panel vista" id="vista">
+        <header>
+          <span>Vista previa <span class="ayuda" id="vista-estado"></span></span>
+          <a id="abrir" href="#" target="_blank" rel="noopener" hidden>Abrir en otra pestaña</a>
+        </header>
+        <div class="vacio" id="vacio">Cargando vista previa…</div>
+        <iframe id="pdf" title="Vista previa del PDF" hidden></iframe>
       </section>
-    </section>
+    </div>
 
-    <section class="panel vista">
-      <header>
-        <span>Vista previa</span>
-        <a id="abrir" href="#" target="_blank" rel="noopener" hidden>Abrir en otra pestaña</a>
-      </header>
-      <div class="vacio" id="vacio">Completá el formulario y tocá “Ver documento”.</div>
-      <iframe id="pdf" title="Vista previa del PDF" hidden></iframe>
+    <section class="panel listado" id="enviados" hidden>
+      <h2>Documentos enviados</h2>
+      <div class="ayuda">Los códigos se guardan sólo en este navegador, para volver a compartirlos.</div>
+      <ul id="lista-enviados"></ul>
     </section>
   </main>
 
@@ -224,85 +226,63 @@
     const btnPrevia = $("previsualizar");
     const btnEnviar = $("enviar");
 
-    // ── Firma ─────────────────────────────────────────────────────────────
-    const canvas = $("firma");
-    const ctx = canvas.getContext("2d");
-    let hayFirma = false;
-    let dibujando = false;
-    let anchoCanvas = 0;
-
-    function prepararCanvas() {
-      const r = canvas.getBoundingClientRect();
-      if (Math.round(r.width) === anchoCanvas) return;
-      anchoCanvas = Math.round(r.width);
-      const dpr = Math.max(window.devicePixelRatio || 1, 2);
-      canvas.width = r.width * dpr;
-      canvas.height = r.height * dpr;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.lineWidth = 2.2;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.strokeStyle = "#101828";
-      marcarFirma(false);
-    }
-
-    function marcarFirma(valor) {
-      hayFirma = valor;
-      $("firma-placeholder").hidden = valor;
-      invalidarVista();
-    }
-
-    function punto(e) {
-      const r = canvas.getBoundingClientRect();
-      return [e.clientX - r.left, e.clientY - r.top];
-    }
-
-    canvas.addEventListener("pointerdown", (e) => {
-      dibujando = true;
-      canvas.setPointerCapture(e.pointerId);
-      const [x, y] = punto(e);
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + 0.01, y);
-      ctx.stroke();
-      if (!hayFirma) marcarFirma(true); else invalidarVista();
-    });
-    canvas.addEventListener("pointermove", (e) => {
-      if (!dibujando) return;
-      for (const ev of e.getCoalescedEvents?.() ?? [e]) {
-        const [x, y] = punto(ev);
-        ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-    });
-    const terminar = () => { dibujando = false; };
-    canvas.addEventListener("pointerup", terminar);
-    canvas.addEventListener("pointercancel", terminar);
-
-    $("limpiar").addEventListener("click", () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      marcarFirma(false);
-    });
-
-    // Si cambia el ancho del recuadro, el trazo se deformaría: se pide de nuevo.
-    new ResizeObserver(prepararCanvas).observe(canvas);
-
     // ── Vista previa ──────────────────────────────────────────────────────
+    // Siempre hay un PDF a la vista: mientras se completa, una muestra con
+    // espacios en blanco para lo que falta (se actualiza al dejar de tipear);
+    // con "Ver documento", el definitivo, que es el único que se puede enviar.
     let borrador = null;
     let urlPdf = null;
+    let versionVista = 0;
+    let esperaMuestra = null;
 
     function invalidarVista() {
       borrador = null;
       btnEnviar.disabled = true;
     }
-    form.addEventListener("input", invalidarVista);
+    form.addEventListener("input", (e) => {
+      invalidarVista();
+      if (e.target.id !== "acepto") programarMuestra();
+    });
+
+    function mostrarPdf(pdf, definitivo) {
+      if (urlPdf) URL.revokeObjectURL(urlPdf);
+      urlPdf = URL.createObjectURL(pdf);
+      $("pdf").src = urlPdf;
+      $("pdf").hidden = false;
+      $("vacio").hidden = true;
+      $("abrir").href = urlPdf;
+      $("abrir").hidden = false;
+      $("vista-estado").textContent = definitivo ? "· lista para enviar" : "· completá tus datos";
+    }
+
+    function programarMuestra() {
+      clearTimeout(esperaMuestra);
+      esperaMuestra = setTimeout(cargarMuestra, 700);
+    }
+
+    async function cargarMuestra() {
+      clearTimeout(esperaMuestra);
+      const version = ++versionVista;
+      try {
+        const r = await fetch("/api/muestra", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(datos()),
+        });
+        if (!r.ok) throw new Error();
+        const pdf = await r.blob();
+        if (version === versionVista) mostrarPdf(pdf, false);
+      } catch {
+        if (version === versionVista && !urlPdf) $("vacio").textContent = "No se pudo cargar la vista previa.";
+      }
+    }
 
     function datos() {
       return {
+        link: linkId,
         nombre: $("nombre").value,
         dni: $("dni").value,
         email: $("email").value,
-        firma: canvas.toDataURL("image/png"),
       };
     }
 
@@ -310,7 +290,6 @@
       if ($("nombre").value.trim().length < 3) return "Ingresá tu nombre y apellido.";
       if (!/^\d{7,8}$/.test($("dni").value.replace(/[.\s]/g, ""))) return "El DNI tiene que tener 7 u 8 números.";
       if (!$("email").checkValidity() || !$("email").value) return "El email no es válido.";
-      if (!hayFirma) return "Falta la firma de conformidad.";
       if (!$("acepto").checked) return "Tenés que aceptar los términos.";
       return null;
     }
@@ -323,6 +302,8 @@
 
       btnPrevia.disabled = true;
       btnPrevia.textContent = "Generando…";
+      clearTimeout(esperaMuestra);
+      const version = ++versionVista;
       try {
         const r = await fetch("/api/previsualizar", {
           method: "POST",
@@ -332,14 +313,9 @@
         if (!r.ok) throw new Error((await r.json()).error);
         const id = r.headers.get("X-Borrador");
         const pdf = await r.blob();
-
-        if (urlPdf) URL.revokeObjectURL(urlPdf);
-        urlPdf = URL.createObjectURL(pdf);
-        $("pdf").src = urlPdf;
-        $("pdf").hidden = false;
-        $("vacio").hidden = true;
-        $("abrir").href = urlPdf;
-        $("abrir").hidden = false;
+        // Si cambió algo mientras se generaba, este PDF ya no es lo que se ve.
+        if (version !== versionVista) return;
+        mostrarPdf(pdf, true);
 
         borrador = id;
         btnEnviar.disabled = false;
@@ -370,6 +346,8 @@
         borrador = null;
         const enviado = { ...d, nombre: $("nombre").value.trim(), enviadoEl: new Date().toISOString() };
         guardarEnviado(enviado);
+        limpiar();
+        mostrarEstado("Acuerdo enviado a firmar", "Este link ya se usó. Tu código quedó guardado más abajo, en “Documentos enviados”.");
         mostrarModal(enviado);
       } catch (e) {
         error.textContent = e.message || "No se pudo enviar el documento.";
@@ -417,6 +395,21 @@
     });
 
     $("cerrar").addEventListener("click", () => modal.close());
+
+    function limpiar() {
+      clearTimeout(esperaMuestra);
+      versionVista++;
+      form.reset();
+      invalidarVista();
+      error.textContent = "";
+      if (urlPdf) URL.revokeObjectURL(urlPdf);
+      urlPdf = null;
+      $("pdf").removeAttribute("src");
+      $("pdf").hidden = true;
+      $("vacio").hidden = false;
+      $("abrir").hidden = true;
+      $("vista-estado").textContent = "";
+    }
 
     // ── Documentos enviados (localStorage) ────────────────────────────────
     // Sólo en este navegador: quien tenga acceso a él puede ver los códigos.
@@ -477,7 +470,164 @@
       );
     }
 
-    pintarEnviados();
+    // ── Links para firmar ─────────────────────────────────────────────────
+    // La lista vive en el localStorage de quien los crea; si un link se usó o
+    // no, lo sabe el servidor (el link se puede abrir en cualquier navegador).
+    const CLAVE_LINKS = "sygners-ejemplo:links";
+    const linkId = new URLSearchParams(location.search).get("link");
+    const FIRMAS = { firmado: "Firmado", "sin-firmar": "No firmado", rechazado: "Rechazado", anulado: "Anulado", vencido: "Vencido" };
+    const urlDeLink = (id) => `${location.origin}/?link=${encodeURIComponent(id)}`;
+
+    function leerLinks() {
+      try {
+        const lista = JSON.parse(localStorage.getItem(CLAVE_LINKS) ?? "[]");
+        return Array.isArray(lista) ? lista : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function escribirLinks(lista) {
+      try {
+        localStorage.setItem(CLAVE_LINKS, JSON.stringify(lista));
+      } catch {
+        // Storage bloqueado o lleno: el link igual se puede copiar ahora.
+      }
+    }
+
+    async function consultarLinks(ids) {
+      const r = await fetch(`/api/links?ids=${ids.map(encodeURIComponent).join(",")}`);
+      if (!r.ok) throw new Error("No se pudo consultar el estado de los links.");
+      return r.json();
+    }
+
+    function boton(texto, alTocar, clase = "") {
+      const b = Object.assign(document.createElement("button"), { type: "button", textContent: texto, className: clase });
+      b.addEventListener("click", alTocar);
+      return b;
+    }
+
+    function pintarLinks(lista = leerLinks()) {
+      $("links-vacio").hidden = lista.length > 0;
+      $("lista-links").replaceChildren(
+        ...lista.map((l) => {
+          const url = urlDeLink(l.id);
+          const usado = l.estado === "usado";
+          const li = document.createElement("li");
+          const quien = document.createElement("div");
+          quien.className = "quien";
+          // Completado: el acuerdo se envió desde el link. La firma en
+          // sygners es un estado aparte.
+          const chips = [usado ? ["completado", "Completado"] : ["pendiente", "Pendiente"]];
+          if (usado && FIRMAS[l.firma]) chips.push([l.firma, FIRMAS[l.firma]]);
+          const cuando = new Date(usado ? l.usadoEl : l.creadoEl).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" });
+          const detalle = Object.assign(document.createElement("span"), {
+            textContent: usado ? `Completado el ${cuando} · ${l.documentoId}` : `Creado el ${cuando}`,
+          });
+          const titulo = Object.assign(document.createElement("strong"), { className: "url", textContent: url.replace(/^https?:\/\//, "") + " " });
+          titulo.append(...chips.map(([clase, texto]) => Object.assign(document.createElement("span"), { className: `chip ${clase}`, textContent: texto })));
+          quien.append(titulo, detalle);
+
+          const botones = document.createElement("div");
+          botones.className = "botones";
+          if (!usado) {
+            const copiar = boton("Copiar", async () => {
+              try {
+                await navigator.clipboard.writeText(url);
+                copiar.textContent = "¡Copiado!";
+              } catch {
+                prompt("Copiá el link:", url);
+              }
+            });
+            botones.append(copiar);
+          }
+          botones.append(
+            boton("Abrir", () => window.open(url, "_blank", "noopener")),
+            boton("Quitar", () => {
+              if (usado || confirm("¿Quitar este link de la lista? Va a seguir sirviendo para firmar si ya lo compartiste.")) {
+                const resto = leerLinks().filter((e) => e.id !== l.id);
+                escribirLinks(resto);
+                pintarLinks(resto);
+              }
+            }, "link"),
+          );
+          li.append(quien, botones);
+          return li;
+        }),
+      );
+    }
+
+    // Trae del servidor qué links se usaron desde la última vez.
+    async function refrescarLinks() {
+      const lista = leerLinks();
+      if (lista.length === 0) return pintarLinks(lista);
+      try {
+        const estados = await consultarLinks(lista.map((l) => l.id));
+        const actual = lista.map((l) => ({ ...l, ...estados[l.id] }));
+        escribirLinks(actual);
+        pintarLinks(actual);
+        $("error-links").textContent = "";
+      } catch (e) {
+        pintarLinks(lista);
+        $("error-links").textContent = e.message;
+      }
+    }
+
+    $("crear-link").addEventListener("click", async () => {
+      const b = $("crear-link");
+      b.disabled = true;
+      try {
+        const r = await fetch("/api/links", { method: "POST" });
+        if (!r.ok) throw new Error("No se pudo crear el link.");
+        const { id, creadoEl } = await r.json();
+        const lista = [{ id, creadoEl, estado: "pendiente" }, ...leerLinks()];
+        escribirLinks(lista);
+        pintarLinks(lista);
+        $("error-links").textContent = "";
+      } catch (e) {
+        $("error-links").textContent = e.message;
+      } finally {
+        b.disabled = false;
+      }
+    });
+
+    function mostrarEstado(titulo, texto) {
+      $("area").hidden = true;
+      $("estado-titulo").textContent = titulo;
+      $("estado-texto").textContent = texto;
+      $("estado-link").hidden = false;
+    }
+
+    // ── Arranque ──────────────────────────────────────────────────────────
+    async function arrancar() {
+      pintarEnviados();
+      if (!linkId) {
+        $("bajada").textContent = "Creá un link por cada persona que tenga que firmar y compartíselo.";
+        $("links").hidden = false;
+        // La firma pasa en sygners, fuera de esta página: se vuelve a mirar
+        // al volver a la pestaña y cada minuto.
+        addEventListener("focus", refrescarLinks);
+        setInterval(refrescarLinks, 60_000);
+        return refrescarLinks();
+      }
+
+      $("bajada").textContent = "Completá tus datos. Vas a ver el documento antes de enviarlo.";
+      try {
+        const { [linkId]: l } = await consultarLinks([linkId]);
+        if (l.estado === "pendiente") {
+          $("area").hidden = false;
+          cargarMuestra();
+        } else if (l.estado === "usado") {
+          mostrarEstado("Este link ya se usó", "Con este link ya se firmó un acuerdo. Pedí un link nuevo si tenés que firmar otro.");
+        } else {
+          mostrarEstado("Link inválido", "Este link para firmar no existe. Revisá que esté completo o pedí uno nuevo.");
+        }
+      } catch (e) {
+        mostrarEstado("No se pudo abrir el link", e.message);
+      }
+    }
+
+    arrancar();
   </script>
 </body>
 </html>
