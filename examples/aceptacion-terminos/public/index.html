@@ -156,7 +156,7 @@
       <p class="vacio-lista" id="links-vacio">Todavía no creaste ningún link.</p>
     </section>
 
-    <!-- Con ?link= ya usado, inexistente, o recién enviado. -->
+    <!-- Con ?link= ya usado, inexistente, o recién firmado. -->
     <section class="panel estado-link" id="estado-link" hidden>
       <h2 id="estado-titulo"></h2>
       <p id="estado-texto"></p>
@@ -173,7 +173,7 @@
 
         <label for="email">Email</label>
         <input id="email" name="email" type="email" autocomplete="email" required>
-        <div class="ayuda">Ahí te llega la invitación de sygners para firmar.</div>
+        <div class="ayuda">Con este email entrás a sygners a firmar.</div>
 
         <label class="check">
           <input type="checkbox" id="acepto" required>
@@ -182,7 +182,7 @@
 
         <div class="acciones">
           <button type="submit" id="previsualizar">Ver documento</button>
-          <button type="button" class="primario" id="enviar" disabled>Enviar a firmar</button>
+          <button type="button" class="primario" id="firmar" disabled>Firmar</button>
         </div>
         <p class="error" id="error" role="alert"></p>
       </form>
@@ -198,15 +198,15 @@
     </div>
 
     <section class="panel listado" id="enviados" hidden>
-      <h2>Documentos enviados</h2>
-      <div class="ayuda">Los códigos se guardan sólo en este navegador, para volver a compartirlos.</div>
+      <h2>Documentos para firmar</h2>
+      <div class="ayuda">Los códigos se guardan sólo en este navegador, para volver a abrir el documento.</div>
       <ul id="lista-enviados"></ul>
     </section>
   </main>
 
   <dialog id="modal" aria-labelledby="modal-titulo">
-    <h2 id="modal-titulo">Documento enviado a firmar</h2>
-    <p id="modal-bajada">Te mandamos la invitación por email. Para abrir el documento vas a necesitar este código:</p>
+    <h2 id="modal-titulo">Código de acceso</h2>
+    <p id="modal-bajada">Para abrir el documento en sygners vas a necesitar este código:</p>
     <div class="codigo">
       <code id="clave"></code>
       <button type="button" id="copiar">Copiar</button>
@@ -215,7 +215,8 @@
     <div class="detalle" id="detalle"></div>
     <div class="modal-acciones">
       <button type="button" id="whatsapp">Compartir por WhatsApp</button>
-      <button type="button" class="primario" id="cerrar">Listo</button>
+      <button type="button" id="cerrar">Cerrar</button>
+      <button type="button" class="primario" id="ir-firmar">Ir a firmar</button>
     </div>
   </dialog>
 
@@ -224,12 +225,12 @@
     const form = $("form");
     const error = $("error");
     const btnPrevia = $("previsualizar");
-    const btnEnviar = $("enviar");
+    const btnFirmar = $("firmar");
 
     // ── Vista previa ──────────────────────────────────────────────────────
     // Siempre hay un PDF a la vista: mientras se completa, una muestra con
     // espacios en blanco para lo que falta (se actualiza al dejar de tipear);
-    // con "Ver documento", el definitivo, que es el único que se puede enviar.
+    // con "Ver documento", el definitivo, que es el único que se puede firmar.
     let borrador = null;
     let urlPdf = null;
     let versionVista = 0;
@@ -237,7 +238,7 @@
 
     function invalidarVista() {
       borrador = null;
-      btnEnviar.disabled = true;
+      btnFirmar.disabled = true;
     }
     form.addEventListener("input", (e) => {
       invalidarVista();
@@ -252,7 +253,7 @@
       $("vacio").hidden = true;
       $("abrir").href = urlPdf;
       $("abrir").hidden = false;
-      $("vista-estado").textContent = definitivo ? "· lista para enviar" : "· completá tus datos";
+      $("vista-estado").textContent = definitivo ? "· lista para firmar" : "· completá tus datos";
     }
 
     function programarMuestra() {
@@ -318,7 +319,7 @@
         mostrarPdf(pdf, true);
 
         borrador = id;
-        btnEnviar.disabled = false;
+        btnFirmar.disabled = false;
         if (matchMedia("(max-width: 860px)").matches) $("pdf").scrollIntoView({ behavior: "smooth" });
       } catch (e) {
         error.textContent = e.message || "No se pudo generar el documento.";
@@ -328,15 +329,18 @@
       }
     });
 
-    // ── Envío ─────────────────────────────────────────────────────────────
-    btnEnviar.addEventListener("click", async () => {
+    // ── Firma ─────────────────────────────────────────────────────────────
+    // El servidor crea el documento en sygners y devuelve el código y el link
+    // para firmar. El código se guarda en este navegador (localStorage) y se copia, y la
+    // página lleva directo a sygners, donde se pega para abrir el documento.
+    btnFirmar.addEventListener("click", async () => {
       if (!borrador) return;
       error.textContent = "";
-      btnEnviar.disabled = true;
+      btnFirmar.disabled = true;
       btnPrevia.disabled = true;
-      btnEnviar.textContent = "Cifrando y enviando…";
+      btnFirmar.textContent = "Cifrando…";
       try {
-        const r = await fetch("/api/enviar", {
+        const r = await fetch("/api/firmar", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ borrador }),
@@ -344,28 +348,45 @@
         const d = await r.json();
         if (!r.ok) throw new Error(d.error);
         borrador = null;
-        const enviado = { ...d, nombre: $("nombre").value.trim(), enviadoEl: new Date().toISOString() };
-        guardarEnviado(enviado);
+        const doc = { ...d, nombre: $("nombre").value.trim(), enviadoEl: new Date().toISOString() };
+        guardarEnviado(doc);
         limpiar();
-        mostrarEstado("Acuerdo enviado a firmar", "Este link ya se usó. Tu código quedó guardado más abajo, en “Documentos enviados”.");
-        mostrarModal(enviado);
+        mostrarEstado("Abriendo sygners…", "Tu código quedó copiado y guardado más abajo, en “Documentos para firmar”.");
+        // Sin el código copiado no se puede abrir el documento en sygners: si
+        // el navegador no deja copiar, se muestra el modal y se sigue desde ahí.
+        if (await copiar(doc.claveDeAcceso)) location.assign(doc.urlFirma);
+        else {
+          mostrarEstado("Documento listo para firmar", "Copiá tu código y tocá “Ir a firmar”. También quedó guardado más abajo.");
+          mostrarModal(doc);
+        }
       } catch (e) {
-        error.textContent = e.message || "No se pudo enviar el documento.";
-        btnEnviar.disabled = !borrador;
+        error.textContent = e.message || "No se pudo preparar el documento.";
+        btnFirmar.disabled = !borrador;
       } finally {
         btnPrevia.disabled = false;
-        btnEnviar.textContent = "Enviar a firmar";
+        btnFirmar.textContent = "Firmar";
       }
     });
+
+    async function copiar(texto) {
+      try {
+        await navigator.clipboard.writeText(texto);
+        return true;
+      } catch {
+        return false;
+      }
+    }
 
     // ── Modal con el código para compartir ────────────────────────────────
     const modal = $("modal");
 
-    function mostrarModal(d, { reabierto = false } = {}) {
-      $("modal-titulo").textContent = reabierto ? "Código para compartir" : "Documento enviado a firmar";
-      $("modal-bajada").textContent = reabierto
-        ? `Documento de ${d.nombre}. Para abrirlo se necesita este código:`
-        : "Te mandamos la invitación por email. Para abrir el documento vas a necesitar este código:";
+    let urlFirmaModal = null;
+
+    function mostrarModal(d) {
+      $("modal-titulo").textContent = "Código de acceso";
+      $("modal-bajada").textContent = `Documento de ${d.nombre}. Para abrirlo en sygners vas a necesitar este código:`;
+      urlFirmaModal = d.urlFirma ?? null;
+      $("ir-firmar").hidden = !urlFirmaModal;
       $("clave").textContent = d.claveDeAcceso;
       $("aviso").textContent = d.aviso;
       const vence = d.venceEl ? new Date(d.venceEl).toLocaleDateString("es-AR", { dateStyle: "long" }) : null;
@@ -381,12 +402,13 @@
     }
 
     $("copiar").addEventListener("click", async () => {
-      try {
-        await navigator.clipboard.writeText($("clave").textContent);
-        $("copiar").textContent = "¡Copiado!";
-      } catch {
-        getSelection().selectAllChildren($("clave"));
-      }
+      if (await copiar($("clave").textContent)) $("copiar").textContent = "¡Copiado!";
+      else getSelection().selectAllChildren($("clave"));
+    });
+
+    $("ir-firmar").addEventListener("click", async () => {
+      await copiar($("clave").textContent);
+      location.assign(urlFirmaModal);
     });
 
     $("whatsapp").addEventListener("click", () => {
@@ -411,7 +433,7 @@
       $("vista-estado").textContent = "";
     }
 
-    // ── Documentos enviados (localStorage) ────────────────────────────────
+    // ── Documentos para firmar (localStorage) ────────────────────────────
     // Sólo en este navegador: quien tenga acceso a él puede ver los códigos.
     // Cuando todos firman, el documento pasa a privado y el código deja de
     // abrirlo, así que guardarlo después no aporta nada.
@@ -430,7 +452,7 @@
       try {
         localStorage.setItem(CLAVE_STORAGE, JSON.stringify(lista));
       } catch {
-        // Storage bloqueado o lleno: el código igual se ve en el modal.
+        // Storage bloqueado o lleno: el código igual queda copiado.
       }
       pintarEnviados();
     }
@@ -454,8 +476,8 @@
           );
           const botones = document.createElement("div");
           botones.className = "botones";
-          const compartir = Object.assign(document.createElement("button"), { type: "button", textContent: "Compartir" });
-          compartir.addEventListener("click", () => mostrarModal(d, { reabierto: true }));
+          const compartir = Object.assign(document.createElement("button"), { type: "button", textContent: "Ver código" });
+          compartir.addEventListener("click", () => mostrarModal(d));
           const quitar = Object.assign(document.createElement("button"), { type: "button", className: "link", textContent: "Quitar" });
           quitar.setAttribute("aria-label", `Quitar el documento de ${d.nombre}`);
           quitar.addEventListener("click", () => {
@@ -611,7 +633,7 @@
         return refrescarLinks();
       }
 
-      $("bajada").textContent = "Completá tus datos. Vas a ver el documento antes de enviarlo.";
+      $("bajada").textContent = "Completá tus datos. Vas a ver el documento antes de firmarlo.";
       try {
         const { [linkId]: l } = await consultarLinks([linkId]);
         if (l.estado === "pendiente") {

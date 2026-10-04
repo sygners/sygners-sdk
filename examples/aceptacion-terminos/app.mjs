@@ -3,9 +3,10 @@
 //   0. Quien emite crea un link por persona. Cada link firma un solo documento.
 //   1. Desde el link, el navegador manda nombre, DNI y email.
 //   2. El servidor arma el PDF y lo devuelve para previsualizarlo. Lo guarda
-//      como borrador: lo que se envía a firmar es exactamente lo que se vio.
-//   3. Al confirmar, el servidor lo manda a firmar con @sygners/sdk y devuelve
-//      la clave de acceso para que el usuario la comparta por otro canal.
+//      como borrador: lo que se firma es exactamente lo que se vio.
+//   3. Al tocar "Firmar", el servidor lo crea en sygners con @sygners/sdk y
+//      devuelve la clave de acceso y el link para firmar: el navegador guarda
+//      la clave y lleva al usuario directo a sygners.
 //
 // La API key vive sólo acá, nunca en el navegador. `manejar` atiende un pedido
 // HTTP de Node: lo usan server.mjs (local) y api/index.mjs (Vercel).
@@ -22,6 +23,11 @@ const FIRMANTES_EXTRA = (process.env.FIRMANTES_EXTRA ?? "")
   .map((e) => e.trim())
   .filter(Boolean);
 
+// Dónde se firma el documento en sygners. {documentoId} se reemplaza.
+const URL_FIRMA =
+  process.env.SYGNERS_URL_FIRMA ??
+  `${(process.env.SYGNERS_BASE_URL ?? "https://sygners.com").replace(/\/+$/, "")}/sign/{documentoId}`;
+
 const sygners = new Sygners({
   apiKey: process.env.SYGNERS_API_KEY ?? "",
   baseUrl: process.env.SYGNERS_BASE_URL,
@@ -35,7 +41,7 @@ function estadoLink(l) {
 }
 
 // Un link sirve mientras exista y no se haya usado. Que no se esté usando en
-// este momento lo asegura la reserva de `enviar`.
+// este momento lo asegura la reserva de `firmar`.
 async function linkDisponible(id) {
   const l = typeof id === "string" ? await almacen.obtenerLink(id) : null;
   if (!l) return { error: "Este link para firmar no existe.", status: 404 };
@@ -109,7 +115,7 @@ function validar(d) {
 }
 
 // El PDF con lo que haya cargado hasta ahora y espacios en blanco para el
-// resto. Sólo para mirar: no queda como borrador y no se puede enviar.
+// resto. Sólo para mirar: no queda como borrador y no se puede firmar.
 async function muestra(req, res) {
   const { nombre, dni } = normalizar(await leerJson(req));
   const pdf = await generarPdf({
@@ -136,12 +142,12 @@ async function previsualizar(req, res) {
   res.end(pdf);
 }
 
-async function enviar(req, res) {
+async function firmar(req, res) {
   const { borrador: id } = await leerJson(req);
   const borrador = typeof id === "string" ? await almacen.obtenerBorrador(id) : null;
   if (!borrador) return json(res, 410, { error: "La vista previa venció. Generala de nuevo." });
 
-  // Se reserva el link antes de llamar a sygners: dos envíos simultáneos desde
+  // Se reserva el link antes de llamar a sygners: dos pedidos simultáneos desde
   // el mismo link no pueden crear dos documentos.
   if (!(await almacen.reservarLink(borrador.link))) {
     return json(res, 409, { error: "Este link se está usando en este momento." });
@@ -167,10 +173,11 @@ async function enviar(req, res) {
     await almacen.borrarBorrador(id);
     // La clave de acceso es la única copia: no la loguees ni la guardes junto
     // al email del firmante.
-    console.log(`Documento ${doc.documentoId} enviado a ${doc.firmantes.map((f) => f.email).join(", ")}`);
+    console.log(`Documento ${doc.documentoId} creado para ${doc.firmantes.map((f) => f.email).join(", ")}`);
     json(res, 200, {
       documentoId: doc.documentoId,
       claveDeAcceso: doc.claveDeAcceso,
+      urlFirma: URL_FIRMA.replace("{documentoId}", encodeURIComponent(doc.documentoId)),
       venceEl: doc.venceEl,
       firmantes: doc.firmantes,
       aviso: doc.aviso,
@@ -199,7 +206,7 @@ export async function manejar(req, res) {
     if (ruta === "GET /api/links") return await consultarLinks(url, res);
     if (ruta === "POST /api/muestra") return await muestra(req, res);
     if (ruta === "POST /api/previsualizar") return await previsualizar(req, res);
-    if (ruta === "POST /api/enviar") return await enviar(req, res);
+    if (ruta === "POST /api/firmar") return await firmar(req, res);
     json(res, 404, { error: "No encontrado." });
   } catch (e) {
     console.error(e);
