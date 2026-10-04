@@ -93,3 +93,8 @@ if (aviso.evento === "documento.completado") {
 `src/cripto/` es copia textual del código de la web (ver `src/cripto/ORIGEN.md`), y
 `test/vectores-sdk.json` son documentos que cifró la web: `npm test` comprueba que la copia los
 abre. Si esa prueba falla, el SDK no se publica.
+
+## Ejemplos
+
+- [`examples/aceptacion-terminos`](examples/aceptacion-terminos): el usuario carga nombre y DNI desde
+  un link para firmar, ve el PDF y lo envía a firmar; un modal le muestra el código para compartir.

@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aceptación de términos</title>
+  <style>
+    :root {
+      --fondo: #f5f6f8;
+      --panel: #ffffff;
+      --texto: #1f2128;
+      --suave: #6b7280;
+      --borde: #d9dce3;
+      --acento: #2f5bea;
+      --acento-texto: #ffffff;
+      --error: #c0392b;
+      --aviso-fondo: #fff7e6;
+      --aviso-borde: #f0c36d;
+      --radio: 10px;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body {
+      margin: 0;
+      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--fondo);
+      color: var(--texto);
+    }
+    main { max-width: 1120px; margin: 0 auto; padding: 32px 16px; }
+    .area {
+      position: relative;
+      display: grid;
+      grid-template-columns: minmax(0, 380px) minmax(0, 1fr);
+      gap: 24px;
+    }
+    @media (max-width: 860px) { .area { grid-template-columns: minmax(0, 1fr); } }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .bajada { color: var(--suave); margin: 0 0 20px; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--borde);
+      border-radius: var(--radio);
+      padding: 20px;
+    }
+    label { display: block; font-weight: 600; font-size: 13px; margin: 14px 0 6px; }
+    input[type=text], input[type=email] {
+      width: 100%;
+      padding: 10px 12px;
+      font: inherit;
+      border: 1px solid var(--borde);
+      border-radius: 8px;
+      background: #fff;
+    }
+    input:focus-visible, button:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+    .ayuda { color: var(--suave); font-size: 12px; }
+    .check { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; font-size: 14px; margin-top: 18px; }
+    .check input { margin-top: 3px; }
+    button {
+      font: inherit; font-weight: 600;
+      padding: 11px 16px;
+      border-radius: 8px;
+      border: 1px solid var(--borde);
+      background: #fff;
+      color: var(--texto);
+      cursor: pointer;
+    }
+    button.primario { background: var(--acento); border-color: var(--acento); color: var(--acento-texto); }
+    button.link { border: 0; background: none; padding: 4px 0; color: var(--acento); font-size: 13px; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .acciones { display: grid; gap: 10px; margin-top: 20px; }
+    .error { color: var(--error); font-size: 13px; min-height: 20px; margin: 10px 0 0; }
+    .vista { display: flex; flex-direction: column; min-height: 600px; padding: 0; overflow: hidden; }
+    .vista header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 16px; border-bottom: 1px solid var(--borde); font-weight: 600;
+    }
+    .vista header a { font-weight: 400; font-size: 13px; color: var(--acento); }
+    .vista iframe { flex: 1; width: 100%; border: 0; min-height: 560px; }
+    .vacio {
+      flex: 1; display: grid; place-items: center; text-align: center;
+      color: var(--suave); padding: 32px;
+    }
+
+    dialog {
+      width: min(460px, calc(100vw - 32px));
+      border: 0; border-radius: 14px; padding: 24px;
+      color: var(--texto); background: var(--panel);
+      box-shadow: 0 20px 60px rgba(0,0,0,.25);
+    }
+    dialog::backdrop { background: rgba(15, 18, 30, .5); }
+    dialog h2 { margin: 0 0 6px; font-size: 20px; }
+    dialog p { margin: 0 0 14px; color: var(--suave); }
+    .codigo {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 14px 16px; border: 1px solid var(--borde); border-radius: 10px;
+      background: var(--fondo);
+    }
+    .codigo code {
+      font: 600 22px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: .08em; word-break: break-all;
+    }
+    .aviso {
+      margin: 16px 0; padding: 12px 14px; font-size: 13px;
+      background: var(--aviso-fondo); border: 1px solid var(--aviso-borde); border-radius: 8px;
+    }
+    .detalle { font-size: 13px; color: var(--suave); margin: 0 0 16px; }
+    .detalle div { margin: 2px 0; }
+    .modal-acciones { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+
+    .listado { margin-top: 24px; }
+    .listado:first-of-type { margin-top: 0; }
+    .listado h2 { font-size: 16px; margin: 0 0 4px; }
+    .listado-cabecera { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+    .listado ul { list-style: none; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+    .listado li {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 10px 12px; border: 1px solid var(--borde); border-radius: 8px;
+    }
+    .listado .quien { flex: 1; min-width: 0; }
+    .listado .quien strong, .enviados .quien span {
+      display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .listado .quien span { color: var(--suave); font-size: 12px; }
+    .listado .botones { display: flex; gap: 4px; flex-shrink: 0; }
+    .listado .botones button { padding: 6px 10px; font-size: 13px; }
+    .listado .url { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; font-weight: 600; }
+    .listado .vacio-lista { color: var(--suave); font-size: 14px; margin: 16px 0 4px; }
+    .chip { display: inline-block; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 600; vertical-align: 1px; }
+    .chip.pendiente { background: #fff1d6; color: #8a5a00; }
+    .chip.completado { background: #e3e9fd; color: #2442a8; }
+    .chip.firmado { background: #dcf5e6; color: #146c3a; }
+    .chip.sin-firmar { background: #eceef2; color: #4b5260; }
+    .chip.rechazado, .chip.anulado, .chip.vencido { background: #fde4e1; color: #a12a1c; }
+    .chip + .chip { margin-left: 4px; }
+    .estado-link { max-width: 520px; margin: 0 auto; text-align: center; padding: 32px 24px; }
+    .estado-link h2 { margin: 0 0 6px; font-size: 20px; }
+    .estado-link p { margin: 0; color: var(--suave); }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Aceptación de términos</h1>
+    <p class="bajada" id="bajada"></p>
+
+    <!-- Sin ?link=: quien emite crea los links y ve si ya se usaron. -->
+    <section class="panel listado" id="links" hidden>
+      <div class="listado-cabecera">
+        <div>
+          <h2>Links para firmar</h2>
+          <div class="ayuda">Cada link sirve para firmar un solo acuerdo. La lista se guarda en este navegador.</div>
+        </div>
+        <button type="button" class="primario" id="crear-link">Crear link para firmar</button>
+      </div>
+      <p class="error" id="error-links" role="alert"></p>
+      <ul id="lista-links"></ul>
+      <p class="vacio-lista" id="links-vacio">Todavía no creaste ningún link.</p>
+    </section>
+
+    <!-- Con ?link= ya usado, inexistente, o recién firmado. -->
+    <section class="panel estado-link" id="estado-link" hidden>
+      <h2 id="estado-titulo"></h2>
+      <p id="estado-texto"></p>
+    </section>
+
+    <!-- Con ?link= pendiente: el formulario para firmar. -->
+    <div class="area" id="area" hidden>
+      <form id="form" class="panel" novalidate>
+        <label for="nombre">Nombre y apellido</label>
+        <input id="nombre" name="nombre" type="text" autocomplete="name" required>
+
+        <label for="dni">DNI</label>
+        <input id="dni" name="dni" type="text" inputmode="numeric" placeholder="30.123.456" required>
+
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="email" required>
+        <div class="ayuda">Con este email entrás a sygners a firmar.</div>
+
+        <label class="check">
+          <input type="checkbox" id="acepto" required>
+          <span>Leí y acepto los términos y condiciones.</span>
+        </label>
+
+        <div class="acciones">
+          <button type="submit" id="previsualizar">Ver documento</button>
+          <button type="button" class="primario" id="firmar" disabled>Firmar</button>
+        </div>
+        <p class="error" id="error" role="alert"></p>
+      </form>
+
+      <section class="panel vista" id="vista">
+        <header>
+          <span>Vista previa <span class="ayuda" id="vista-estado"></span></span>
+          <a id="abrir" href="#" target="_blank" rel="noopener" hidden>Abrir en otra pestaña</a>
+        </header>
+        <div class="vacio" id="vacio">Cargando vista previa…</div>
+        <iframe id="pdf" title="Vista previa del PDF" hidden></iframe>
+      </section>
+    </div>
+
+    <section class="panel listado" id="enviados" hidden>
+      <h2>Documentos para firmar</h2>
+      <div class="ayuda">Los códigos se guardan sólo en este navegador, para volver a abrir el documento.</div>
+      <ul id="lista-enviados"></ul>
+    </section>
+  </main>
+
+  <dialog id="modal" aria-labelledby="modal-titulo">
+    <h2 id="modal-titulo">Código de acceso</h2>
+    <p id="modal-bajada">Para abrir el documento en sygners vas a necesitar este código:</p>
+    <div class="codigo">
+      <code id="clave"></code>
+      <button type="button" id="copiar">Copiar</button>
+    </div>
+    <div class="aviso" id="aviso"></div>
+    <div class="detalle" id="detalle"></div>
+    <div class="modal-acciones">
+      <button type="button" id="whatsapp">Compartir por WhatsApp</button>
+      <button type="button" id="cerrar">Cerrar</button>
+      <button type="button" class="primario" id="ir-firmar">Ir a firmar</button>
+    </div>
+  </dialog>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const form = $("form");
+    const error = $("error");
+    const btnPrevia = $("previsualizar");
+    const btnFirmar = $("firmar");
+
+    // ── Vista previa ──────────────────────────────────────────────────────
+    // Siempre hay un PDF a la vista: mientras se completa, una muestra con
+    // espacios en blanco para lo que falta (se actualiza al dejar de tipear);
+    // con "Ver documento", el definitivo, que es el único que se puede firmar.
+    let borrador = null;
+    let urlPdf = null;
+    let versionVista = 0;
+    let esperaMuestra = null;
+
+    function invalidarVista() {
+      borrador = null;
+      btnFirmar.disabled = true;
+    }
+    form.addEventListener("input", (e) => {
+      invalidarVista();
+      if (e.target.id !== "acepto") programarMuestra();
+    });
+
+    function mostrarPdf(pdf, definitivo) {
+      if (urlPdf) URL.revokeObjectURL(urlPdf);
+      urlPdf = URL.createObjectURL(pdf);
+      $("pdf").src = urlPdf;
+      $("pdf").hidden = false;
+      $("vacio").hidden = true;
+      $("abrir").href = urlPdf;
+      $("abrir").hidden = false;
+      $("vista-estado").textContent = definitivo ? "· lista para firmar" : "· completá tus datos";
+    }
+
+    function programarMuestra() {
+      clearTimeout(esperaMuestra);
+      esperaMuestra = setTimeout(cargarMuestra, 700);
+    }
+
+    async function cargarMuestra() {
+      clearTimeout(esperaMuestra);
+      const version = ++versionVista;
+      try {
+        const r = await fetch("/api/muestra", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(datos()),
+        });
+        if (!r.ok) throw new Error();
+        const pdf = await r.blob();
+        if (version === versionVista) mostrarPdf(pdf, false);
+      } catch {
+        if (version === versionVista && !urlPdf) $("vacio").textContent = "No se pudo cargar la vista previa.";
+      }
+    }
+
+    function datos() {
+      return {
+        link: linkId,
+        nombre: $("nombre").value,
+        dni: $("dni").value,
+        email: $("email").value,
+      };
+    }
+
+    function validar() {
+      if ($("nombre").value.trim().length < 3) return "Ingresá tu nombre y apellido.";
+      if (!/^\d{7,8}$/.test($("dni").value.replace(/[.\s]/g, ""))) return "El DNI tiene que tener 7 u 8 números.";
+      if (!$("email").checkValidity() || !$("email").value) return "El email no es válido.";
+      if (!$("acepto").checked) return "Tenés que aceptar los términos.";
+      return null;
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const problema = validar();
+      error.textContent = problema ?? "";
+      if (problema) return;
+
+      btnPrevia.disabled = true;
+      btnPrevia.textContent = "Generando…";
+      clearTimeout(esperaMuestra);
+      const version = ++versionVista;
+      try {
+        const r = await fetch("/api/previsualizar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(datos()),
+        });
+        if (!r.ok) throw new Error((await r.json()).error);
+        const id = r.headers.get("X-Borrador");
+        const pdf = await r.blob();
+        // Si cambió algo mientras se generaba, este PDF ya no es lo que se ve.
+        if (version !== versionVista) return;
+        mostrarPdf(pdf, true);
+
+        borrador = id;
+        btnFirmar.disabled = false;
+        if (matchMedia("(max-width: 860px)").matches) $("pdf").scrollIntoView({ behavior: "smooth" });
+      } catch (e) {
+        error.textContent = e.message || "No se pudo generar el documento.";
+      } finally {
+        btnPrevia.disabled = false;
+        btnPrevia.textContent = "Ver documento";
+      }
+    });
+
+    // ── Firma ─────────────────────────────────────────────────────────────
+    // El servidor crea el documento en sygners y devuelve el código y el link
+    // para firmar. El código se guarda en este navegador (localStorage) y se copia, y la
+    // página lleva directo a sygners, donde se pega para abrir el documento.
+    btnFirmar.addEventListener("click", async () => {
+      if (!borrador) return;
+      error.textContent = "";
+      btnFirmar.disabled = true;
+      btnPrevia.disabled = true;
+      btnFirmar.textContent = "Cifrando…";
+      try {
+        const r = await fetch("/api/firmar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ borrador }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error);
+        borrador = null;
+        const doc = { ...d, nombre: $("nombre").value.trim(), enviadoEl: new Date().toISOString() };
+        guardarEnviado(doc);
+        limpiar();
+        mostrarEstado("Abriendo sygners…", "Tu código quedó copiado y guardado más abajo, en “Documentos para firmar”.");
+        // Sin el código copiado no se puede abrir el documento en sygners: si
+        // el navegador no deja copiar, se muestra el modal y se sigue desde ahí.
+        if (await copiar(doc.claveDeAcceso)) location.assign(doc.urlFirma);
+        else {
+          mostrarEstado("Documento listo para firmar", "Copiá tu código y tocá “Ir a firmar”. También quedó guardado más abajo.");
+          mostrarModal(doc);
+        }
+      } catch (e) {
+        error.textContent = e.message || "No se pudo preparar el documento.";
+        btnFirmar.disabled = !borrador;
+      } finally {
+        btnPrevia.disabled = false;
+        btnFirmar.textContent = "Firmar";
+      }
+    });
+
+    async function copiar(texto) {
+      try {
+        await navigator.clipboard.writeText(texto);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    // ── Modal con el código para compartir ────────────────────────────────
+    const modal = $("modal");
+
+    let urlFirmaModal = null;
+
+    function mostrarModal(d) {
+      $("modal-titulo").textContent = "Código de acceso";
+      $("modal-bajada").textContent = `Documento de ${d.nombre}. Para abrirlo en sygners vas a necesitar este código:`;
+      urlFirmaModal = d.urlFirma ?? null;
+      $("ir-firmar").hidden = !urlFirmaModal;
+      $("clave").textContent = d.claveDeAcceso;
+      $("aviso").textContent = d.aviso;
+      const vence = d.venceEl ? new Date(d.venceEl).toLocaleDateString("es-AR", { dateStyle: "long" }) : null;
+      $("detalle").replaceChildren(
+        ...[
+          `Documento: ${d.documentoId}`,
+          `Firmantes: ${d.firmantes.map((f) => f.email).join(", ")}`,
+          vence && `Vence el ${vence}`,
+        ].filter(Boolean).map((t) => Object.assign(document.createElement("div"), { textContent: t })),
+      );
+      $("copiar").textContent = "Copiar";
+      modal.showModal();
+    }
+
+    $("copiar").addEventListener("click", async () => {
+      if (await copiar($("clave").textContent)) $("copiar").textContent = "¡Copiado!";
+      else getSelection().selectAllChildren($("clave"));
+    });
+
+    $("ir-firmar").addEventListener("click", async () => {
+      await copiar($("clave").textContent);
+      location.assign(urlFirmaModal);
+    });
+
+    $("whatsapp").addEventListener("click", () => {
+      const texto = `Código para abrir el documento de aceptación de términos en sygners: ${$("clave").textContent}`;
+      window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank", "noopener");
+    });
+
+    $("cerrar").addEventListener("click", () => modal.close());
+
+    function limpiar() {
+      clearTimeout(esperaMuestra);
+      versionVista++;
+      form.reset();
+      invalidarVista();
+      error.textContent = "";
+      if (urlPdf) URL.revokeObjectURL(urlPdf);
+      urlPdf = null;
+      $("pdf").removeAttribute("src");
+      $("pdf").hidden = true;
+      $("vacio").hidden = false;
+      $("abrir").hidden = true;
+      $("vista-estado").textContent = "";
+    }
+
+    // ── Documentos para firmar (localStorage) ────────────────────────────
+    // Sólo en este navegador: quien tenga acceso a él puede ver los códigos.
+    // Cuando todos firman, el documento pasa a privado y el código deja de
+    // abrirlo, así que guardarlo después no aporta nada.
+    const CLAVE_STORAGE = "sygners-ejemplo:enviados";
+
+    function leerEnviados() {
+      try {
+        const lista = JSON.parse(localStorage.getItem(CLAVE_STORAGE) ?? "[]");
+        return Array.isArray(lista) ? lista : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function escribirEnviados(lista) {
+      try {
+        localStorage.setItem(CLAVE_STORAGE, JSON.stringify(lista));
+      } catch {
+        // Storage bloqueado o lleno: el código igual queda copiado.
+      }
+      pintarEnviados();
+    }
+
+    function guardarEnviado(d) {
+      escribirEnviados([d, ...leerEnviados().filter((e) => e.documentoId !== d.documentoId)]);
+    }
+
+    function pintarEnviados() {
+      const lista = leerEnviados();
+      $("enviados").hidden = lista.length === 0;
+      $("lista-enviados").replaceChildren(
+        ...lista.map((d) => {
+          const li = document.createElement("li");
+          const quien = document.createElement("div");
+          quien.className = "quien";
+          const fecha = new Date(d.enviadoEl).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" });
+          quien.append(
+            Object.assign(document.createElement("strong"), { textContent: d.nombre }),
+            Object.assign(document.createElement("span"), { textContent: `${fecha} · ${d.firmantes.map((f) => f.email).join(", ")}` }),
+          );
+          const botones = document.createElement("div");
+          botones.className = "botones";
+          const compartir = Object.assign(document.createElement("button"), { type: "button", textContent: "Ver código" });
+          compartir.addEventListener("click", () => mostrarModal(d));
+          const quitar = Object.assign(document.createElement("button"), { type: "button", className: "link", textContent: "Quitar" });
+          quitar.setAttribute("aria-label", `Quitar el documento de ${d.nombre}`);
+          quitar.addEventListener("click", () => {
+            if (confirm("¿Quitar este código de la lista? Si no lo guardaste en otro lado, no se puede recuperar.")) {
+              escribirEnviados(leerEnviados().filter((e) => e.documentoId !== d.documentoId));
+            }
+          });
+          botones.append(compartir, quitar);
+          li.append(quien, botones);
+          return li;
+        }),
+      );
+    }
+
+    // ── Links para firmar ─────────────────────────────────────────────────
+    // La lista vive en el localStorage de quien los crea; si un link se usó o
+    // no, lo sabe el servidor (el link se puede abrir en cualquier navegador).
+    const CLAVE_LINKS = "sygners-ejemplo:links";
+    const linkId = new URLSearchParams(location.search).get("link");
+    const FIRMAS = { firmado: "Firmado", "sin-firmar": "No firmado", rechazado: "Rechazado", anulado: "Anulado", vencido: "Vencido" };
+    const urlDeLink = (id) => `${location.origin}/?link=${encodeURIComponent(id)}`;
+
+    function leerLinks() {
+      try {
+        const lista = JSON.parse(localStorage.getItem(CLAVE_LINKS) ?? "[]");
+        return Array.isArray(lista) ? lista : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function escribirLinks(lista) {
+      try {
+        localStorage.setItem(CLAVE_LINKS, JSON.stringify(lista));
+      } catch {
+        // Storage bloqueado o lleno: el link igual se puede copiar ahora.
+      }
+    }
+
+    async function consultarLinks(ids) {
+      const r = await fetch(`/api/links?ids=${ids.map(encodeURIComponent).join(",")}`);
+      if (!r.ok) throw new Error("No se pudo consultar el estado de los links.");
+      return r.json();
+    }
+
+    function boton(texto, alTocar, clase = "") {
+      const b = Object.assign(document.createElement("button"), { type: "button", textContent: texto, className: clase });
+      b.addEventListener("click", alTocar);
+      return b;
+    }
+
+    function pintarLinks(lista = leerLinks()) {
+      $("links-vacio").hidden = lista.length > 0;
+      $("lista-links").replaceChildren(
+        ...lista.map((l) => {
+          const url = urlDeLink(l.id);
+          const usado = l.estado === "usado";
+          const li = document.createElement("li");
+          const quien = document.createElement("div");
+          quien.className = "quien";
+          // Completado: el acuerdo se envió desde el link. La firma en
+          // sygners es un estado aparte.
+          const chips = [usado ? ["completado", "Completado"] : ["pendiente", "Pendiente"]];
+          if (usado && FIRMAS[l.firma]) chips.push([l.firma, FIRMAS[l.firma]]);
+          const cuando = new Date(usado ? l.usadoEl : l.creadoEl).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" });
+          const detalle = Object.assign(document.createElement("span"), {
+            textContent: usado ? `Completado el ${cuando} · ${l.documentoId}` : `Creado el ${cuando}`,
+          });
+          const titulo = Object.assign(document.createElement("strong"), { className: "url", textContent: url.replace(/^https?:\/\//, "") + " " });
+          titulo.append(...chips.map(([clase, texto]) => Object.assign(document.createElement("span"), { className: `chip ${clase}`, textContent: texto })));
+          quien.append(titulo, detalle);
+
+          const botones = document.createElement("div");
+          botones.className = "botones";
+          if (!usado) {
+            const copiar = boton("Copiar", async () => {
+              try {
+                await navigator.clipboard.writeText(url);
+                copiar.textContent = "¡Copiado!";
+              } catch {
+                prompt("Copiá el link:", url);
+              }
+            });
+            botones.append(copiar);
+          }
+          botones.append(
+            boton("Abrir", () => window.open(url, "_blank", "noopener")),
+            boton("Quitar", () => {
+              if (usado || confirm("¿Quitar este link de la lista? Va a seguir sirviendo para firmar si ya lo compartiste.")) {
+                const resto = leerLinks().filter((e) => e.id !== l.id);
+                escribirLinks(resto);
+                pintarLinks(resto);
+              }
+            }, "link"),
+          );
+          li.append(quien, botones);
+          return li;
+        }),
+      );
+    }
+
+    // Trae del servidor qué links se usaron desde la última vez.
+    async function refrescarLinks() {
+      const lista = leerLinks();
+      if (lista.length === 0) return pintarLinks(lista);
+      try {
+        const estados = await consultarLinks(lista.map((l) => l.id));
+        const actual = lista.map((l) => ({ ...l, ...estados[l.id] }));
+        escribirLinks(actual);
+        pintarLinks(actual);
+        $("error-links").textContent = "";
+      } catch (e) {
+        pintarLinks(lista);
+        $("error-links").textContent = e.message;
+      }
+    }
+
+    $("crear-link").addEventListener("click", async () => {
+      const b = $("crear-link");
+      b.disabled = true;
+      try {
+        const r = await fetch("/api/links", { method: "POST" });
+        if (!r.ok) throw new Error("No se pudo crear el link.");
+        const { id, creadoEl } = await r.json();
+        const lista = [{ id, creadoEl, estado: "pendiente" }, ...leerLinks()];
+        escribirLinks(lista);
+        pintarLinks(lista);
+        $("error-links").textContent = "";
+      } catch (e) {
+        $("error-links").textContent = e.message;
+      } finally {
+        b.disabled = false;
+      }
+    });
+
+    function mostrarEstado(titulo, texto) {
+      $("area").hidden = true;
+      $("estado-titulo").textContent = titulo;
+      $("estado-texto").textContent = texto;
+      $("estado-link").hidden = false;
+    }
+
+    // ── Arranque ──────────────────────────────────────────────────────────
+    async function arrancar() {
+      pintarEnviados();
+      if (!linkId) {
+        $("bajada").textContent = "Creá un link por cada persona que tenga que firmar y compartíselo.";
+        $("links").hidden = false;
+        // La firma pasa en sygners, fuera de esta página: se vuelve a mirar
+        // al volver a la pestaña y cada minuto.
+        addEventListener("focus", refrescarLinks);
+        setInterval(refrescarLinks, 60_000);
+        return refrescarLinks();
+      }
+
+      $("bajada").textContent = "Completá tus datos. Vas a ver el documento antes de firmarlo.";
+      try {
+        const { [linkId]: l } = await consultarLinks([linkId]);
+        if (l.estado === "pendiente") {
+          $("area").hidden = false;
+          cargarMuestra();
+        } else if (l.estado === "usado") {
+          mostrarEstado("Este link ya se usó", "Con este link ya se firmó un acuerdo. Pedí un link nuevo si tenés que firmar otro.");
+        } else {
+          mostrarEstado("Link inválido", "Este link para firmar no existe. Revisá que esté completo o pedí uno nuevo.");
+        }
+      } catch (e) {
+        mostrarEstado("No se pudo abrir el link", e.message);
+      }
+    }
+
+    arrancar();
+  </script>
+</body>
+</html>
