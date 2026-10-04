@@ -26,7 +26,7 @@ const FIRMANTES_EXTRA = (process.env.FIRMANTES_EXTRA ?? "")
 // Dónde se firma el documento en sygners. {documentoId} se reemplaza.
 const URL_FIRMA =
   process.env.SYGNERS_URL_FIRMA ??
-  `${(process.env.SYGNERS_BASE_URL ?? "https://sygners.com").replace(/\/+$/, "")}/sign/{documentoId}`;
+  `${(process.env.SYGNERS_BASE_URL ?? "https://sygners.com").replace(/\/+$/, "")}/documents/{documentoId}`;
 
 const sygners = new Sygners({
   apiKey: process.env.SYGNERS_API_KEY ?? "",

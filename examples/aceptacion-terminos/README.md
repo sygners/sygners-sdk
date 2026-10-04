@@ -30,7 +30,7 @@ Firmar ─────────────────────▶ POST /
                                documentos.crear(PDF) ──────────▶ invita por email
    código + link para firmar ◀── claveDeAcceso; el link queda usado
   (localStorage + portapapeles)
-redirige a sygners ─────────────────────────────────────────────▶ /sign/<documentoId>
+redirige a sygners ─────────────────────────────────────────────▶ /documents/<documentoId>
 ```
 
 Lo que se firma es exactamente el PDF que se previsualizó: el servidor guarda el borrador y
@@ -57,7 +57,7 @@ npm start              # http://localhost:3000
 | ------------------- | ----------------------------------------------------------------------- |
 | `SYGNERS_API_KEY`   | Obligatoria. "Mi plan" → *Integración (API)*.                           |
 | `SYGNERS_BASE_URL`  | Opcional. Otra URL de la API (por ejemplo, stage).                      |
-| `SYGNERS_URL_FIRMA` | Opcional. Dónde se firma; `{documentoId}` se reemplaza. Default `<SYGNERS_BASE_URL>/sign/{documentoId}`. |
+| `SYGNERS_URL_FIRMA` | Opcional. Dónde se firma; `{documentoId}` se reemplaza. Default `<SYGNERS_BASE_URL>/documents/{documentoId}`. |
 | `FIRMANTES_EXTRA`   | Opcional. Emails que firman siempre además del usuario, separados por coma. |
 | `PORT`              | Opcional. Default `3000`.                                               |
 
