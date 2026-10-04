@@ -379,7 +379,7 @@
         limpiar();
         if (d.urlFirma) {
           ventana.entregar({ urlFirma: d.urlFirma, claveDeAcceso });
-          mostrarEstado("Seguí en la pestaña de sygners", "Ahí ves el documento y lo firmás. Si la cerraste, tocá “Ir a firmar” más abajo, en “Documentos para firmar”.");
+          mostrarEstado("Seguí en la pestaña de sygners", "Ahí ves el documento y lo firmás. Si la cerraste, tocá “Firmar” más abajo, en “Documentos para firmar”.");
         } else {
           // sygners no devolvió el enlace: la invitación llegó por email.
           ventana.cerrar();
@@ -536,7 +536,10 @@
           quitar.setAttribute("aria-label", `Quitar el documento de ${d.nombre}`);
           quitar.addEventListener("click", () => {
             if (confirm("¿Quitar este código de la lista? Si no lo guardaste en otro lado, no se puede recuperar.")) {
-              escribirEnviados(leerEnviados().filter((e) => e.documentoId !== d.documentoId));
+              const quedan = leerEnviados().filter((e) => e.documentoId !== d.documentoId);
+              escribirEnviados(quedan);
+              // En un link ya usado, sin nada más que hacer acá: al inicio.
+              if (quedan.length === 0 && linkId && $("area").hidden) location.assign("/");
             }
           });
           botones.append(...[firmar, compartir, quitar].filter(Boolean));
