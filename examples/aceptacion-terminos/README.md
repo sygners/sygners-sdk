@@ -9,11 +9,21 @@ que el servidor consulta con `documentos.estado`.
 Quien abre un link ve desde el primer momento el PDF, con espacios en blanco para lo que falta, que
 se va completando a medida que carga **nombre, DNI y email** (`POST /api/muestra`: sólo para mirar,
 no se puede firmar). **Ver documento** arma el PDF definitivo. El PDF no lleva firma a mano: la firma
-se hace en sygners. Al tocar **Firmar**, el servidor crea el documento con `@sygners/sdk` y devuelve la
-clave de acceso y el link para firmar. El navegador guarda la clave en su `localStorage` (lista
-**Documentos para firmar**), la copia al portapapeles y redirige directo a sygners, donde se pega
-para abrir el documento. Si el navegador no deja copiar, muestra la clave en un modal con
-**Ir a firmar**. sygners igual manda su invitación por email.
+se hace en sygners. Al tocar **Firmar**:
+
+1. el servidor inicia el documento (`documentos.iniciar`) y le pasa al navegador el id y el hash;
+2. el navegador genera la **clave de acceso** y cifra el PDF con `@sygners/sdk/navegador`;
+3. el servidor sube el cifrado y sella (`documentos.completar`);
+4. el navegador guarda la clave en `sessionStorage` y abre el documento en sygners con la clave en
+   el fragmento de la URL (`/documents/<id>#clave=…`), que el navegador no manda a ningún servidor.
+
+**La clave de acceso nunca pasa por el servidor del ejemplo.** También queda en el `localStorage`
+(lista **Documentos para firmar**), para volver a abrir el documento. sygners igual manda su
+invitación por email.
+
+> Para que sygners abra el documento sin pedir la clave, su página `/documents/[id]` tiene que leer
+> el fragmento: `tomarClaveDelFragmento(id)` de `@sygners/sdk/navegador` hace eso (la pasa a su
+> `sessionStorage` y la saca de la URL). Mientras sygners no lo haga, la clave se pega a mano.
 
 ```
 navegador                         server.mjs                          sygners
@@ -26,18 +36,23 @@ nombre, DNI, email ────────▶ POST /api/previsualizar
                                arma el PDF (terminos.mjs)
              PDF + borrador ◀──  y lo guarda como borrador
       (vista previa en iframe)
-Firmar ─────────────────────▶ POST /api/firmar
-                               documentos.crear(PDF) ──────────▶ invita por email
-   código + link para firmar ◀── claveDeAcceso; el link queda usado
-  (localStorage + portapapeles)
-redirige a sygners ─────────────────────────────────────────────▶ /documents/<documentoId>
+Firmar ─────────────────────▶ POST /api/firmar/iniciar
+                               documentos.iniciar(PDF) ────────▶ registra (sin cobrar)
+          documentoId + hash ◀──  (el uploadToken queda en el borrador)
+genera la clave y cifra el PDF
+(@sygners/sdk/navegador)
+cifrado + llave ────────────▶ POST /api/firmar/completar
+                               documentos.completar ───────────▶ sube, sella, invita por email
+             urlDocumento ◀──  el link queda usado
+clave → sessionStorage
+abre sygners ───────────────────────────────────────────────────▶ /documents/<id>#clave=…
 ```
 
 Lo que se firma es exactamente el PDF que se previsualizó: el servidor guarda el borrador y
 el navegador sólo manda su id. El texto de los términos lo pone el servidor; el navegador sólo aporta los
 datos. Qué links existen y cuáles ya se usaron lo sabe el servidor
-(`links.json`), porque un link se abre en cualquier navegador; el link se reserva mientras se crea el
-documento, así que dos pedidos simultáneos no crean dos documentos.
+(`links.json`), porque un link se abre en cualquier navegador; el link se reserva entre `iniciar` y
+`completar`, así que dos pedidos simultáneos no crean dos documentos.
 
 ## Correrlo
 
@@ -57,7 +72,7 @@ npm start              # http://localhost:3000
 | ------------------- | ----------------------------------------------------------------------- |
 | `SYGNERS_API_KEY`   | Obligatoria. "Mi plan" → *Integración (API)*.                           |
 | `SYGNERS_BASE_URL`  | Opcional. Otra URL de la API (por ejemplo, stage).                      |
-| `SYGNERS_URL_FIRMA` | Opcional. Dónde se firma; `{documentoId}` se reemplaza. Default `<SYGNERS_BASE_URL>/documents/{documentoId}`. |
+| `SYGNERS_URL_FIRMA` | Opcional. La página del documento en sygners; `{documentoId}` se reemplaza. Default `<SYGNERS_BASE_URL>/documents/{documentoId}`. |
 | `FIRMANTES_EXTRA`   | Opcional. Emails que firman siempre además del usuario, separados por coma. |
 | `PORT`              | Opcional. Default `3000`.                                               |
 
@@ -80,11 +95,10 @@ npm run deploy:vercel
 
 ## Para llevarlo a producción
 
-- **El código va por otro canal.** Acá el código queda en el navegador de quien firma y nunca viaja
-  por email. Si sumás `FIRMANTES_EXTRA`, a ellos compartíselo por WhatsApp, SMS o en persona, nunca
+- **El código va por otro canal.** Acá el código nace y queda en el navegador de quien firma: no
+  pasa por tu servidor ni por un email. Si sumás `FIRMANTES_EXTRA`, a ellos compartíselo por WhatsApp, SMS o en persona, nunca
   en el mismo email que el enlace de la invitación.
-- **El código es la única copia.** `crear` la devuelve una vez y sygners no la tiene: el servidor
-  la pasa al navegador y no la loguea. Este ejemplo la guarda en el `localStorage` de quien firma,
+- **El código es la única copia.** La genera el navegador y sygners no la tiene. Este ejemplo la guarda en el `localStorage` de quien firma,
   así que cualquiera con acceso a ese navegador puede verla. Si la guardás en tu sistema, que no
   quede junto al email del firmante: juntos abren el documento.
 - Los borradores viven en memoria 30 minutos y los links en `links.json`. En producción, guardá

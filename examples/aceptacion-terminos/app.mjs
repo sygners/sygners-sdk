@@ -4,13 +4,19 @@
 //   1. Desde el link, el navegador manda nombre, DNI y email.
 //   2. El servidor arma el PDF y lo devuelve para previsualizarlo. Lo guarda
 //      como borrador: lo que se firma es exactamente lo que se vio.
-//   3. Al tocar "Firmar", el servidor lo crea en sygners con @sygners/sdk y
-//      devuelve la clave de acceso y el link para firmar: el navegador guarda
-//      la clave y lleva al usuario directo a sygners.
+//   3. Al tocar "Firmar":
+//      a. el servidor inicia el documento en sygners (`documentos.iniciar`);
+//      b. el navegador genera la clave de acceso y cifra el PDF con
+//         `@sygners/sdk/navegador`, y devuelve el cifrado y la llave;
+//      c. el servidor sube y sella (`documentos.completar`);
+//      d. el navegador abre el documento en sygners con la clave en el
+//         fragmento de la URL.
+//      La clave de acceso nunca pasa por este servidor.
 //
 // La API key vive sólo acá, nunca en el navegador. `manejar` atiende un pedido
 // HTTP de Node: lo usan server.mjs (local) y api/index.mjs (Vercel).
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { randomBytes, randomUUID } from "node:crypto";
 import { Sygners, SygnersError } from "@sygners/sdk";
 import { almacen } from "./almacen.mjs";
@@ -23,8 +29,8 @@ const FIRMANTES_EXTRA = (process.env.FIRMANTES_EXTRA ?? "")
   .map((e) => e.trim())
   .filter(Boolean);
 
-// Dónde se firma el documento en sygners. {documentoId} se reemplaza.
-const URL_FIRMA =
+// La página del documento en sygners. {documentoId} se reemplaza.
+const URL_DOCUMENTO =
   process.env.SYGNERS_URL_FIRMA ??
   `${(process.env.SYGNERS_BASE_URL ?? "https://sygners.com").replace(/\/+$/, "")}/documents/{documentoId}`;
 
@@ -41,7 +47,7 @@ function estadoLink(l) {
 }
 
 // Un link sirve mientras exista y no se haya usado. Que no se esté usando en
-// este momento lo asegura la reserva de `firmar`.
+// este momento lo asegura la reserva de `iniciarFirma`.
 async function linkDisponible(id) {
   const l = typeof id === "string" ? await almacen.obtenerLink(id) : null;
   if (!l) return { error: "Este link para firmar no existe.", status: 404 };
@@ -142,21 +148,25 @@ async function previsualizar(req, res) {
   res.end(pdf);
 }
 
-async function firmar(req, res) {
+// Inicia el documento en sygners y reserva el link hasta que se complete (o
+// venza la reserva). El navegador recibe lo que necesita para cifrar: el id y
+// el hash del PDF. El uploadToken se queda en el borrador.
+async function iniciarFirma(req, res) {
   const { borrador: id } = await leerJson(req);
   const borrador = typeof id === "string" ? await almacen.obtenerBorrador(id) : null;
   if (!borrador) return json(res, 410, { error: "La vista previa venció. Generala de nuevo." });
+  // Reintento después de un error en el navegador: el documento ya existe.
+  if (borrador.documentoId) return json(res, 200, { documentoId: borrador.documentoId, fileHash: borrador.fileHash });
 
-  // Se reserva el link antes de llamar a sygners: dos pedidos simultáneos desde
-  // el mismo link no pueden crear dos documentos.
+  // Dos firmas simultáneas desde el mismo link no pueden crear dos documentos.
   if (!(await almacen.reservarLink(borrador.link))) {
     return json(res, 409, { error: "Este link se está usando en este momento." });
   }
   try {
     const disponible = await linkDisponible(borrador.link);
-    if (disponible.error) return json(res, disponible.status, { error: disponible.error });
+    if (disponible.error) throw Object.assign(new Error(disponible.error), { status: disponible.status });
 
-    const doc = await sygners.documentos.crear({
+    const ini = await sygners.documentos.iniciar({
       archivo: borrador.pdf,
       nombre: `aceptacion-terminos-${borrador.dni.replace(/\./g, "")}.pdf`,
       tipo: "application/pdf",
@@ -164,35 +174,63 @@ async function firmar(req, res) {
       firmantes: [...new Set([borrador.email, ...FIRMANTES_EXTRA])],
       idioma: "es-AR",
     });
+    await almacen.guardarBorrador(id, { ...borrador, documentoId: ini.documentoId, uploadToken: ini.uploadToken, fileHash: ini.fileHash });
+    json(res, 200, { documentoId: ini.documentoId, fileHash: ini.fileHash });
+  } catch (e) {
+    await almacen.liberarLink(borrador.link);
+    if (e instanceof SygnersError) return errorSygners(res, e);
+    throw e;
+  }
+}
+
+// Sube el PDF cifrado en el navegador y sella. `cifrado` y `llave` no abren
+// nada sin la clave de acceso, que se quedó en el navegador.
+async function completarFirma(req, res) {
+  const { borrador: id, cifrado, llave } = await leerJson(req, 10_000_000);
+  const borrador = typeof id === "string" ? await almacen.obtenerBorrador(id) : null;
+  if (!borrador?.documentoId) return json(res, 410, { error: "La firma no se inició o venció. Generá la vista previa de nuevo." });
+  if (typeof cifrado !== "string" || llave?.kind !== "passphrase") return json(res, 400, { error: "Falta el documento cifrado." });
+
+  try {
+    const disponible = await linkDisponible(borrador.link);
+    if (disponible.error) return json(res, disponible.status, { error: disponible.error });
+
+    const sellado = await sygners.documentos.completar(borrador.documentoId, {
+      uploadToken: borrador.uploadToken,
+      cifrado: Buffer.from(cifrado, "base64"),
+      llave,
+    });
     await almacen.guardarLink(borrador.link, {
       ...disponible.link,
-      documentoId: doc.documentoId,
+      documentoId: borrador.documentoId,
       usadoEl: new Date().toISOString(),
       firma: "sin-firmar",
     });
     await almacen.borrarBorrador(id);
-    // La clave de acceso es la única copia: no la loguees ni la guardes junto
-    // al email del firmante.
-    console.log(`Documento ${doc.documentoId} creado para ${doc.firmantes.map((f) => f.email).join(", ")}`);
+    console.log(`Documento ${borrador.documentoId} creado para ${sellado.firmantes.map((f) => f.email).join(", ")}`);
     json(res, 200, {
-      documentoId: doc.documentoId,
-      claveDeAcceso: doc.claveDeAcceso,
-      urlFirma: URL_FIRMA.replace("{documentoId}", encodeURIComponent(doc.documentoId)),
-      venceEl: doc.venceEl,
-      firmantes: doc.firmantes,
-      aviso: doc.aviso,
+      documentoId: borrador.documentoId,
+      urlDocumento: URL_DOCUMENTO.replace("{documentoId}", encodeURIComponent(borrador.documentoId)),
+      venceEl: sellado.venceEl,
+      firmantes: sellado.firmantes,
     });
   } catch (e) {
-    if (e instanceof SygnersError) {
-      console.error(`sygners (${e.paso}, ${e.status}, ${e.codigo}): ${e.message}`);
-      const mensaje = e.status === 402 ? "El plan no tiene saldo para enviar este documento." : e.message;
-      return json(res, 502, { error: mensaje });
-    }
+    if (e instanceof SygnersError) return errorSygners(res, e);
     throw e;
   } finally {
     await almacen.liberarLink(borrador.link);
   }
 }
+
+function errorSygners(res, e) {
+  console.error(`sygners (${e.paso}, ${e.status}, ${e.codigo}): ${e.message}`);
+  const mensaje = e.status === 402 ? "El plan no tiene saldo para enviar este documento." : e.message;
+  json(res, 502, { error: mensaje });
+}
+
+// La parte del SDK que corre en el navegador, en un solo archivo. En Vercel
+// la copia a public/ el script de deploy.
+const SDK_NAVEGADOR = fileURLToPath(import.meta.resolve("@sygners/sdk/navegador/sygners-navegador.js"));
 
 export async function manejar(req, res) {
   try {
@@ -206,7 +244,12 @@ export async function manejar(req, res) {
     if (ruta === "GET /api/links") return await consultarLinks(url, res);
     if (ruta === "POST /api/muestra") return await muestra(req, res);
     if (ruta === "POST /api/previsualizar") return await previsualizar(req, res);
-    if (ruta === "POST /api/firmar") return await firmar(req, res);
+    if (ruta === "GET /sygners-navegador.js") {
+      res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
+      return res.end(await readFile(SDK_NAVEGADOR));
+    }
+    if (ruta === "POST /api/firmar/iniciar") return await iniciarFirma(req, res);
+    if (ruta === "POST /api/firmar/completar") return await completarFirma(req, res);
     json(res, 404, { error: "No encontrado." });
   } catch (e) {
     console.error(e);

@@ -71,6 +71,38 @@ Sin saldo en el plan, `status` es 402 y no se invita a nadie.
 Cuando todos firman, el documento pasa a **privado**: sólo lo abren las wallets de los firmantes, y
 la clave de acceso deja de abrirlo. Guardá tu copia del archivo original.
 
+## Que la clave no pase por tu servidor
+
+`crear` genera la clave de acceso en tu servidor. Si preferís que nazca en el navegador de quien
+firma, partilo en tres:
+
+```ts
+// Servidor
+const ini = await sygners.documentos.iniciar({ archivo, nombre, tipo, titulo, firmantes });
+// → al navegador: ini.documentoId e ini.fileHash. El uploadToken se queda acá.
+
+// Navegador
+import { cifrarDocumento, abrirParaFirmar } from "@sygners/sdk/navegador";
+const { cifrado, llave, claveDeAcceso } = await cifrarDocumento({ archivo, documentoId, fileHash });
+// → al servidor: cifrado y llave (no abren nada sin la clave).
+
+// Servidor
+const { venceEl, firmantes } = await sygners.documentos.completar(ini.documentoId, {
+  uploadToken: ini.uploadToken,
+  cifrado,
+  llave,
+});
+
+// Navegador: guarda la clave en sessionStorage y abre el documento con la clave en el
+// fragmento (#clave=…), que el navegador no manda a ningún servidor.
+abrirParaFirmar({ urlDocumento: `https://sygners.com/documents/${documentoId}`, documentoId, claveDeAcceso });
+```
+
+Del lado de sygners, `tomarClaveDelFragmento(documentoId)` toma la clave del fragmento, la pasa a
+`sessionStorage` y la saca de la URL. `@sygners/sdk/navegador` no usa la API key. Sin bundler, cargá
+`dist/navegador/sygners-navegador.js` (un solo archivo, con sus dependencias) con
+`<script type="module">`.
+
 ## Webhooks
 
 En "Mi plan" configurás una URL `https` y recibís un secreto (se muestra una sola vez). sygners
@@ -97,4 +129,5 @@ abre. Si esa prueba falla, el SDK no se publica.
 ## Ejemplos
 
 - [`examples/aceptacion-terminos`](examples/aceptacion-terminos): el usuario carga nombre y DNI desde
-  un link para firmar, ve el PDF y lo envía a firmar; un modal le muestra el código para compartir.
+  un link para firmar, ve el PDF y lo firma: el navegador cifra con `@sygners/sdk/navegador` y abre
+  el documento en sygners con la clave, que nunca pasa por el servidor.

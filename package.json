@@ -12,12 +12,18 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
-    }
+    },
+    "./navegador": {
+      "types": "./dist/navegador.d.ts",
+      "import": "./dist/navegador.js",
+      "require": "./dist/navegador.cjs"
+    },
+    "./navegador/sygners-navegador.js": "./dist/navegador/sygners-navegador.js"
   },
   "files": ["dist", "README.md"],
   "engines": { "node": ">=20" },
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "build": "rm -rf dist && tsup",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts",
     "prepublishOnly": "npm run typecheck && npm test && npm run build"

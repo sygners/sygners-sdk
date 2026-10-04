@@ -8,9 +8,14 @@
 // ⚠️ Los módulos de `./cripto` son COPIA TEXTUAL de los de sygners
 // (`src/lib/{envelope,passphrase,hash,signature}.ts`). No se editan acá: una
 // diferencia pierde documentos. `test/vectores.test.ts` lo comprueba.
+//
+// Para que la clave de acceso no pase nunca por tu servidor, el cifrado puede
+// correr en el navegador: `iniciar` acá, `cifrarDocumento` de
+// `@sygners/sdk/navegador` allá, y `completar` acá con lo que devuelva.
 import { sha256Hex } from "./cripto/hash";
-import { encryptDocument, generateDek, wrapDek } from "./cripto/envelope";
-import { PASSPHRASE_KEK_ALG, deriveKekFromPassphrase, encodeKdfParams, generatePassphrase } from "./cripto/passphrase";
+import { aBytes, cifrarParaSellar, type LlaveDeAcceso } from "./sellado";
+
+export type { LlaveDeAcceso } from "./sellado";
 
 export const AVISO_CLAVE =
   "Entregá la clave de acceso a los firmantes por un canal distinto del email de invitación (WhatsApp, SMS, en persona). Si viajan juntos, el cifrado deja de proteger el documento.";
@@ -65,6 +70,19 @@ export interface DocumentoCreado {
   venceEl: string | null;
   firmantes: { email: string; estado: string }[];
   aviso: string;
+}
+
+export interface DocumentoIniciado {
+  documentoId: string;
+  // Autoriza subir y sellar este documento. No lo mandes al navegador: con él
+  // y la API key se completa el documento.
+  uploadToken: string;
+  fileHash: string;
+}
+
+export interface Sellado {
+  venceEl: string | null;
+  firmantes: { email: string; estado: string }[];
 }
 
 export interface EstadoDocumento {
@@ -144,13 +162,23 @@ class Documentos {
     return r;
   }
 
-  // Inicia, sube el cifrado y sella: al volver, los firmantes ya tienen su
-  // invitación por email. Si un paso falla, el error dice cuál (`paso`); un
-  // documento iniciado y no sellado no cobra nada y vence solo.
+  // Inicia, cifra, sube el cifrado y sella: al volver, los firmantes ya
+  // tienen su invitación por email. Si un paso falla, el error dice cuál
+  // (`paso`); un documento iniciado y no sellado no cobra nada y vence solo.
   async crear(n: NuevoDocumento): Promise<DocumentoCreado> {
     const plaintext = await aBytes(n.archivo);
-    const fileHash = await sha256Hex(plaintext);
+    const ini = await this.iniciar({ ...n, archivo: plaintext });
+    const { cifrado, llave, claveDeAcceso } = await cifrarParaSellar({ plaintext, documentoId: ini.documentoId, fileHash: ini.fileHash });
+    const sellado = await this.completar(ini.documentoId, { uploadToken: ini.uploadToken, cifrado, llave });
+    return { documentoId: ini.documentoId, claveDeAcceso, fileHash: ini.fileHash, ...sellado, aviso: AVISO_CLAVE };
+  }
 
+  // Primera mitad de `crear`: registra el documento sin cobrar nada. Lo que
+  // falta (cifrar con una clave nueva) puede hacerse en el navegador con
+  // `cifrarDocumento`, para que la clave no pase por tu servidor.
+  async iniciar(n: NuevoDocumento): Promise<DocumentoIniciado> {
+    const plaintext = await aBytes(n.archivo);
+    const fileHash = await sha256Hex(plaintext);
     const ini = (await (
       await this.llamar("iniciar", "POST", "/documentos", {
         fileName: n.nombre,
@@ -164,37 +192,17 @@ class Documentos {
         idioma: n.idioma,
       })
     ).json()) as { documentoId: string; uploadToken: string };
+    return { documentoId: ini.documentoId, uploadToken: ini.uploadToken, fileHash };
+  }
 
-    // El documentId entra en la AAD: recién ahora se puede cifrar.
-    const dek = generateDek();
-    const blob = await encryptDocument({ dek, plaintext, documentId: ini.documentoId, fileHash });
-    await this.llamar("subir", "PUT", `/documentos/${ini.documentoId}/cifrado`, blob, { "X-Upload-Token": ini.uploadToken });
-
-    const clave = generatePassphrase();
-    const kek = await deriveKekFromPassphrase(clave.phrase, clave.saltB64, clave.params);
+  // Segunda mitad: sube el cifrado y sella con la llave. Acá se cobra y se
+  // invita a los firmantes.
+  async completar(id: string, c: { uploadToken: string; cifrado: Uint8Array; llave: LlaveDeAcceso }): Promise<Sellado> {
+    await this.llamar("subir", "PUT", `/documentos/${encodeURIComponent(id)}/cifrado`, c.cifrado, { "X-Upload-Token": c.uploadToken });
     const sellado = (await (
-      await this.llamar("sellar", "POST", `/documentos/${ini.documentoId}/sellar`, {
-        uploadToken: ini.uploadToken,
-        keys: [
-          {
-            kind: "passphrase",
-            alg: PASSPHRASE_KEK_ALG,
-            kdfSalt: clave.saltB64,
-            kdfParams: encodeKdfParams(clave.params),
-            wrappedKey: await wrapDek(kek, dek),
-          },
-        ],
-      })
-    ).json()) as { venceEl: string | null; firmantes: { email: string; estado: string }[] };
-
-    return {
-      documentoId: ini.documentoId,
-      claveDeAcceso: clave.phrase,
-      fileHash,
-      venceEl: sellado.venceEl,
-      firmantes: sellado.firmantes,
-      aviso: AVISO_CLAVE,
-    };
+      await this.llamar("sellar", "POST", `/documentos/${encodeURIComponent(id)}/sellar`, { uploadToken: c.uploadToken, keys: [c.llave] })
+    ).json()) as Sellado;
+    return { venceEl: sellado.venceEl, firmantes: sellado.firmantes };
   }
 
   async estado(id: string): Promise<EstadoDocumento> {
@@ -214,12 +222,6 @@ class Documentos {
       estado: string;
     };
   }
-}
-
-async function aBytes(a: Uint8Array | ArrayBuffer | Blob): Promise<Uint8Array> {
-  if (a instanceof Uint8Array) return a;
-  if (a instanceof ArrayBuffer) return new Uint8Array(a);
-  return new Uint8Array(await a.arrayBuffer());
 }
 
 // Verifica un aviso de webhook: `Sygners-Signature: t=<unix>,v1=<hex>`, con

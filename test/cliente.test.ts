@@ -5,6 +5,7 @@ import { Sygners, SygnersError, AVISO_CLAVE } from "../src/index";
 import { decryptDocument, unwrapDek } from "../src/cripto/envelope";
 import { decodeKdfParams, deriveKekFromPassphrase } from "../src/cripto/passphrase";
 import { sha256Hex } from "../src/cripto/hash";
+import { cifrarDocumento } from "../src/navegador";
 
 const KEY = `sgn_test_${"a".repeat(43)}`;
 
@@ -73,4 +74,39 @@ test("un error dice en qué paso fue", async () => {
 
 test("rechaza una key mal formada", () => {
   assert.throws(() => new Sygners({ apiKey: "hola" }));
+});
+
+test("iniciar + cifrarDocumento + completar: la clave nace en el navegador y no viaja", async () => {
+  const { f, llamadas } = apiFalsa();
+  const s = new Sygners({ apiKey: KEY, baseUrl: "https://ejemplo.test", fetch: f });
+  const secreto = "CONTENIDO-SECRETO-DEL-CONTRATO-" + Math.random();
+  const archivo = new TextEncoder().encode(secreto);
+
+  const ini = await s.documentos.iniciar({ archivo, nombre: "contrato.txt", firmantes: ["a@b.c"] });
+  assert.deepEqual(ini, { documentoId: "cdoc1", uploadToken: "tok1", fileHash: await sha256Hex(archivo) });
+
+  // Lo que pasa en el navegador: recibe documentoId y fileHash, devuelve cifrado y llave.
+  const { cifrado, llave, claveDeAcceso } = await cifrarDocumento({ archivo, documentoId: ini.documentoId, fileHash: ini.fileHash });
+  const sellado = await s.documentos.completar(ini.documentoId, { uploadToken: ini.uploadToken, cifrado, llave });
+  assert.deepEqual(sellado, { venceEl: "2026-10-03T00:00:00.000Z", firmantes: [{ email: "a@b.c", estado: "PENDING" }] });
+
+  assert.deepEqual(llamadas.map((l) => `${l.metodo} ${new URL(l.url).pathname}`), [
+    "POST /api/v1/documentos",
+    "PUT /api/v1/documentos/cdoc1/cifrado",
+    "POST /api/v1/documentos/cdoc1/sellar",
+  ]);
+  for (const l of llamadas) {
+    const texto = l.cuerpo instanceof Uint8Array ? new TextDecoder("utf-8", { fatal: false }).decode(l.cuerpo) : l.cuerpo ?? "";
+    assert.ok(!texto.includes(secreto), `el archivo en claro viajó en ${l.url}`);
+    assert.ok(!texto.toUpperCase().includes(claveDeAcceso), `la clave viajó en ${l.url}`);
+  }
+  const k = JSON.parse(llamadas[2].cuerpo as string).keys[0];
+  const kek = await deriveKekFromPassphrase(claveDeAcceso, k.kdfSalt, decodeKdfParams(k.kdfParams)!, k.alg);
+  const plano = await decryptDocument({ dek: await unwrapDek(kek, k.wrappedKey), blob: llamadas[1].cuerpo as Uint8Array, documentId: "cdoc1", fileHash: ini.fileHash });
+  assert.equal(new TextDecoder().decode(plano), secreto);
+});
+
+test("cifrarDocumento rechaza un archivo distinto del iniciado", async () => {
+  const fileHash = await sha256Hex(new Uint8Array([1, 2, 3]));
+  await assert.rejects(cifrarDocumento({ archivo: new Uint8Array([4, 5, 6]), documentoId: "cdoc1", fileHash }), /hash no coincide/);
 });

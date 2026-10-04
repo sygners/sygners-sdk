@@ -21,6 +21,8 @@ mkdir "$copia/.vercel" && cp "$ejemplo/.vercel/project.json" "$copia/.vercel/"
 
 cd "$copia"
 npm install --silent --no-audit --no-fund "./$tarball"
+# La parte del SDK que corre en el navegador, como archivo estático.
+cp node_modules/@sygners/sdk/dist/navegador/sygners-navegador.js public/
 vercel pull --yes --environment=production >/dev/null
 vercel build --prod
 vercel deploy --prebuilt --prod

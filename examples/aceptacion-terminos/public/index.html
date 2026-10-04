@@ -232,12 +232,15 @@
     // espacios en blanco para lo que falta (se actualiza al dejar de tipear);
     // con "Ver documento", el definitivo, que es el único que se puede firmar.
     let borrador = null;
+    // El PDF definitivo: el navegador lo cifra al firmar.
+    let pdfDefinitivo = null;
     let urlPdf = null;
     let versionVista = 0;
     let esperaMuestra = null;
 
     function invalidarVista() {
       borrador = null;
+      pdfDefinitivo = null;
       btnFirmar.disabled = true;
     }
     form.addEventListener("input", (e) => {
@@ -319,6 +322,7 @@
         mostrarPdf(pdf, true);
 
         borrador = id;
+        pdfDefinitivo = pdf;
         btnFirmar.disabled = false;
         if (matchMedia("(max-width: 860px)").matches) $("pdf").scrollIntoView({ behavior: "smooth" });
       } catch (e) {
@@ -330,35 +334,36 @@
     });
 
     // ── Firma ─────────────────────────────────────────────────────────────
-    // El servidor crea el documento en sygners y devuelve el código y el link
-    // para firmar. El código se guarda en este navegador (localStorage) y se copia, y la
-    // página lleva directo a sygners, donde se pega para abrir el documento.
+    // La clave de acceso nace acá y no pasa por el servidor:
+    //   1. el servidor inicia el documento y devuelve su id y el hash del PDF;
+    //   2. el SDK genera la clave y cifra el PDF en este navegador;
+    //   3. el servidor sube el cifrado y sella;
+    //   4. el SDK guarda la clave en sessionStorage y abre el documento en
+    //      sygners con la clave en el fragmento (#clave=…), que no llega a
+    //      ningún servidor.
+    const sdk = () => import("/sygners-navegador.js");
+
     btnFirmar.addEventListener("click", async () => {
-      if (!borrador) return;
+      if (!borrador || !pdfDefinitivo) return;
       error.textContent = "";
       btnFirmar.disabled = true;
       btnPrevia.disabled = true;
       btnFirmar.textContent = "Cifrando…";
       try {
-        const r = await fetch("/api/firmar", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ borrador }),
+        const { cifrarDocumento, abrirParaFirmar } = await sdk();
+        const ini = await postJson("/api/firmar/iniciar", { borrador });
+        const { cifrado, llave, claveDeAcceso } = await cifrarDocumento({
+          archivo: pdfDefinitivo,
+          documentoId: ini.documentoId,
+          fileHash: ini.fileHash,
         });
-        const d = await r.json();
-        if (!r.ok) throw new Error(d.error);
+        btnFirmar.textContent = "Enviando…";
+        const d = await postJson("/api/firmar/completar", { borrador, cifrado: aBase64(cifrado), llave });
         borrador = null;
-        const doc = { ...d, nombre: $("nombre").value.trim(), enviadoEl: new Date().toISOString() };
-        guardarEnviado(doc);
+        guardarEnviado({ ...d, claveDeAcceso, nombre: $("nombre").value.trim(), enviadoEl: new Date().toISOString() });
         limpiar();
-        mostrarEstado("Abriendo sygners…", "Tu código quedó copiado y guardado más abajo, en “Documentos para firmar”.");
-        // Sin el código copiado no se puede abrir el documento en sygners: si
-        // el navegador no deja copiar, se muestra el modal y se sigue desde ahí.
-        if (await copiar(doc.claveDeAcceso)) location.assign(doc.urlFirma);
-        else {
-          mostrarEstado("Documento listo para firmar", "Copiá tu código y tocá “Ir a firmar”. También quedó guardado más abajo.");
-          mostrarModal(doc);
-        }
+        mostrarEstado("Abriendo sygners…", "Tu código quedó guardado en este navegador, más abajo, en “Documentos para firmar”.");
+        abrirParaFirmar({ urlDocumento: d.urlDocumento, documentoId: d.documentoId, claveDeAcceso });
       } catch (e) {
         error.textContent = e.message || "No se pudo preparar el documento.";
         btnFirmar.disabled = !borrador;
@@ -367,6 +372,19 @@
         btnFirmar.textContent = "Firmar";
       }
     });
+
+    async function postJson(url, cuerpo) {
+      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      return d;
+    }
+
+    function aBase64(bytes) {
+      let s = "";
+      for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      return btoa(s);
+    }
 
     async function copiar(texto) {
       try {
@@ -380,15 +398,16 @@
     // ── Modal con el código para compartir ────────────────────────────────
     const modal = $("modal");
 
-    let urlFirmaModal = null;
+    let documentoModal = null;
 
     function mostrarModal(d) {
       $("modal-titulo").textContent = "Código de acceso";
       $("modal-bajada").textContent = `Documento de ${d.nombre}. Para abrirlo en sygners vas a necesitar este código:`;
-      urlFirmaModal = d.urlFirma ?? null;
-      $("ir-firmar").hidden = !urlFirmaModal;
+      documentoModal = d.urlDocumento ? d : null;
+      $("ir-firmar").hidden = !documentoModal;
       $("clave").textContent = d.claveDeAcceso;
-      $("aviso").textContent = d.aviso;
+      $("aviso").textContent = d.aviso ?? "";
+      $("aviso").hidden = !d.aviso;
       const vence = d.venceEl ? new Date(d.venceEl).toLocaleDateString("es-AR", { dateStyle: "long" }) : null;
       $("detalle").replaceChildren(
         ...[
@@ -407,8 +426,8 @@
     });
 
     $("ir-firmar").addEventListener("click", async () => {
-      await copiar($("clave").textContent);
-      location.assign(urlFirmaModal);
+      const { abrirParaFirmar } = await sdk();
+      abrirParaFirmar(documentoModal);
     });
 
     $("whatsapp").addEventListener("click", () => {
