@@ -77,12 +77,15 @@ la clave de acceso deja de abrirlo. Guardá tu copia del archivo original.
 firma, partilo en tres:
 
 ```ts
+// Navegador, en el handler del click (antes de cualquier await, o se bloquea como popup)
+import { abrirVentanaDeFirma, cifrarDocumento } from "@sygners/sdk/navegador";
+const ventana = abrirVentanaDeFirma();
+
 // Servidor
 const ini = await sygners.documentos.iniciar({ archivo, nombre, tipo, titulo, firmantes });
 // → al navegador: ini.documentoId e ini.fileHash. El uploadToken se queda acá.
 
 // Navegador
-import { cifrarDocumento, abrirParaFirmar } from "@sygners/sdk/navegador";
 const { cifrado, llave, claveDeAcceso } = await cifrarDocumento({ archivo, documentoId, fileHash });
 // → al servidor: cifrado y llave (no abren nada sin la clave).
 
@@ -91,15 +94,20 @@ const { venceEl, firmantes } = await sygners.documentos.completar(ini.documentoI
   uploadToken: ini.uploadToken,
   cifrado,
   llave,
+  // Opcional: quien firma ahora, en este navegador. No recibe el email y su
+  // enlace vuelve en firmantes[].urlFirma.
+  firmaEnElNavegador: "ana@ejemplo.com",
 });
 
-// Navegador: guarda la clave en sessionStorage y abre el documento con la clave en el
-// fragmento (#clave=…), que el navegador no manda a ningún servidor.
-abrirParaFirmar({ urlDocumento: `https://sygners.com/documents/${documentoId}`, documentoId, claveDeAcceso });
+// Navegador: lleva la pestaña a urlFirma y le entrega la clave con postMessage cuando
+// sygners la pide. La clave nunca va en una URL.
+await ventana.entregar({ urlFirma, claveDeAcceso });
 ```
 
-Del lado de sygners, `tomarClaveDelFragmento(documentoId)` toma la clave del fragmento, la pasa a
-`sessionStorage` y la saca de la URL. `@sygners/sdk/navegador` no usa la API key. Sin bundler, cargá
+Del lado de sygners, `/sign/[token]` guarda la clave en su `sessionStorage`, abre el documento sin
+pedirla y la borra al firmar. `urlFirma` abre el documento para firmar: no lo guardes junto a la
+clave en tu sistema ni lo mandes por el mismo canal. `@sygners/sdk/navegador` no usa la API key. Sin
+bundler, cargá
 `dist/navegador/sygners-navegador.js` (un solo archivo, con sus dependencias) con
 `<script type="module">`.
 

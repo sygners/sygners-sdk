@@ -2,15 +2,19 @@
 //
 // Con esto la clave de acceso nace y se queda en el navegador de quien firma:
 //
-//   1. Tu servidor llama a `documentos.iniciar` y le pasa al navegador el
+//   1. Al tocar "Firmar", el navegador abre la pestaña de sygners con
+//      `abrirVentanaDeFirma` (tiene que ser en el mismo click, o el navegador
+//      la bloquea).
+//   2. Tu servidor llama a `documentos.iniciar` y le pasa al navegador el
 //      `documentoId` y el `fileHash` (nunca el `uploadToken` ni la API key).
-//   2. El navegador cifra con `cifrarDocumento` y le devuelve a tu servidor
+//   3. El navegador cifra con `cifrarDocumento` y le devuelve a tu servidor
 //      `cifrado` y `llave`, que no abren nada sin la clave.
-//   3. Tu servidor llama a `documentos.completar`.
-//   4. El navegador abre el documento en sygners con `abrirParaFirmar`: la
-//      clave queda en `sessionStorage` y viaja a sygners en el fragmento de la
-//      URL (`#clave=…`), que el navegador no manda a ningún servidor. sygners
-//      la toma con `tomarClaveDelFragmento` y abre el documento sin pedirla.
+//   4. Tu servidor llama a `documentos.completar` con `firmaEnElNavegador`, y
+//      le pasa al navegador la `urlFirma` de ese firmante.
+//   5. `ventana.entregar` lleva la pestaña a `urlFirma` y, cuando sygners
+//      avisa que está lista, le pasa la clave con `postMessage`: nunca va en
+//      una URL ni pasa por un servidor. sygners la guarda en su
+//      `sessionStorage` y abre el documento sin pedirla.
 //
 // No usa la API key: no hay nada acá que dé acceso al plan.
 import { sha256Hex } from "./cripto/hash";
@@ -18,10 +22,9 @@ import { aBytes, cifrarParaSellar, type DocumentoCifrado } from "./sellado";
 
 export type { DocumentoCifrado, LlaveDeAcceso } from "./sellado";
 
-// El parámetro del fragmento con el que la clave llega a sygners.
-export const PARAMETRO_CLAVE = "clave";
-
-const claveSesion = (documentoId: string) => `sygners:clave:${documentoId}`;
+// El protocolo con `/sign/[token]` de sygners (`useClaveRecibida` allá).
+export const MENSAJE_LISTO = "sygners:listo-para-clave";
+export const MENSAJE_CLAVE = "sygners:clave";
 
 // Cifra el archivo para el documento que inició tu servidor. Antes comprueba
 // que sea el mismo archivo: si no, sygners lo rechazaría al sellar.
@@ -37,47 +40,53 @@ export async function cifrarDocumento(p: {
   return cifrarParaSellar({ plaintext, documentoId: p.documentoId, fileHash: p.fileHash.toLowerCase() });
 }
 
-// Guarda la clave en `sessionStorage` (de este origen y esta pestaña).
-export function guardarClave(documentoId: string, claveDeAcceso: string): void {
-  try {
-    sessionStorage.setItem(claveSesion(documentoId), claveDeAcceso);
-  } catch {
-    // Storage bloqueado: la clave igual viaja en el fragmento.
+export interface VentanaDeFirma {
+  // Lleva la pestaña a `urlFirma` y le entrega la clave cuando sygners la
+  // pide. Se resuelve al entregarla.
+  entregar(p: { urlFirma: string; claveDeAcceso: string }): Promise<void>;
+  // Si algo falla antes de entregar.
+  cerrar(): void;
+}
+
+export class VentanaBloqueadaError extends Error {
+  constructor() {
+    super("El navegador bloqueó la pestaña de sygners. Permití las ventanas emergentes de este sitio y probá de nuevo.");
+    this.name = "VentanaBloqueadaError";
   }
 }
 
-export function leerClave(documentoId: string): string | null {
+// Abre la pestaña de sygners en blanco. Llamala en el handler del click, antes
+// de cualquier `await`: si no, el navegador la toma por un popup y la bloquea.
+export function abrirVentanaDeFirma(opts: { texto?: string } = {}): VentanaDeFirma {
+  const ventana = window.open("", "_blank");
+  if (!ventana) throw new VentanaBloqueadaError();
   try {
-    return sessionStorage.getItem(claveSesion(documentoId));
+    ventana.document.title = "sygners";
+    ventana.document.body.textContent = opts.texto ?? "Preparando el documento…";
+    ventana.document.body.style.cssText = "font:16px system-ui,sans-serif;color:#475569;padding:32px";
   } catch {
-    return null;
+    // Si no se puede escribir en la pestaña en blanco, queda vacía: no importa.
   }
-}
 
-// La URL del documento con la clave en el fragmento. `urlDocumento` es la
-// página del documento en sygners, sin fragmento.
-export function urlParaFirmar(urlDocumento: string, claveDeAcceso: string): string {
-  const url = new URL(urlDocumento);
-  url.hash = `${PARAMETRO_CLAVE}=${encodeURIComponent(claveDeAcceso)}`;
-  return url.toString();
-}
-
-// Guarda la clave y lleva a sygners en esta pestaña.
-export function abrirParaFirmar(p: { urlDocumento: string; documentoId: string; claveDeAcceso: string }): void {
-  guardarClave(p.documentoId, p.claveDeAcceso);
-  location.assign(urlParaFirmar(p.urlDocumento, p.claveDeAcceso));
-}
-
-// Del lado de sygners: toma la clave del fragmento, la pasa a `sessionStorage`
-// y la saca de la URL (y del historial). Si no vino en el fragmento, devuelve
-// la que haya en `sessionStorage` de una visita anterior en esta pestaña.
-export function tomarClaveDelFragmento(documentoId: string): string | null {
-  const params = new URLSearchParams(location.hash.slice(1));
-  const clave = params.get(PARAMETRO_CLAVE);
-  if (!clave) return leerClave(documentoId);
-  guardarClave(documentoId, clave);
-  params.delete(PARAMETRO_CLAVE);
-  const resto = params.toString();
-  history.replaceState(history.state, "", `${location.pathname}${location.search}${resto ? `#${resto}` : ""}`);
-  return clave;
+  return {
+    entregar({ urlFirma, claveDeAcceso }) {
+      const origen = new URL(urlFirma).origin;
+      return new Promise<void>((resolver) => {
+        function alPedir(e: MessageEvent) {
+          if (e.source !== ventana || e.origin !== origen) return;
+          if ((e.data as { tipo?: unknown } | null)?.tipo !== MENSAJE_LISTO) return;
+          // Dirigida al origen de sygners: si la pestaña ya está en otro lado,
+          // el navegador no la entrega.
+          ventana!.postMessage({ tipo: MENSAJE_CLAVE, clave: claveDeAcceso }, origen);
+          removeEventListener("message", alPedir);
+          resolver();
+        }
+        addEventListener("message", alPedir);
+        ventana!.location.href = urlFirma;
+      });
+    },
+    cerrar() {
+      ventana.close();
+    },
+  };
 }

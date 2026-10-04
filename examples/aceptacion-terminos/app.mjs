@@ -8,10 +8,12 @@
 //      a. el servidor inicia el documento en sygners (`documentos.iniciar`);
 //      b. el navegador genera la clave de acceso y cifra el PDF con
 //         `@sygners/sdk/navegador`, y devuelve el cifrado y la llave;
-//      c. el servidor sube y sella (`documentos.completar`);
-//      d. el navegador abre el documento en sygners con la clave en el
-//         fragmento de la URL.
-//      La clave de acceso nunca pasa por este servidor.
+//      c. el servidor sube y sella (`documentos.completar`) con
+//         `firmaEnElNavegador`: a quien firma no le llega el email, y su enlace
+//         de firma vuelve acá;
+//      d. el navegador lleva a sygners la pestaña que abrió al tocar "Firmar" y
+//         le entrega la clave con postMessage.
+//      La clave de acceso nunca pasa por este servidor ni va en una URL.
 //
 // La API key vive sólo acá, nunca en el navegador. `manejar` atiende un pedido
 // HTTP de Node: lo usan server.mjs (local) y api/index.mjs (Vercel).
@@ -28,11 +30,6 @@ const FIRMANTES_EXTRA = (process.env.FIRMANTES_EXTRA ?? "")
   .split(",")
   .map((e) => e.trim())
   .filter(Boolean);
-
-// La página del documento en sygners. {documentoId} se reemplaza.
-const URL_DOCUMENTO =
-  process.env.SYGNERS_URL_FIRMA ??
-  `${(process.env.SYGNERS_BASE_URL ?? "https://sygners.com").replace(/\/+$/, "")}/documents/{documentoId}`;
 
 const sygners = new Sygners({
   apiKey: process.env.SYGNERS_API_KEY ?? "",
@@ -199,7 +196,10 @@ async function completarFirma(req, res) {
       uploadToken: borrador.uploadToken,
       cifrado: Buffer.from(cifrado, "base64"),
       llave,
+      // Firma ahora, en este navegador: recibe su enlace en vez del email.
+      firmaEnElNavegador: borrador.email,
     });
+    const urlFirma = sellado.firmantes.find((f) => f.email === borrador.email)?.urlFirma;
     await almacen.guardarLink(borrador.link, {
       ...disponible.link,
       documentoId: borrador.documentoId,
@@ -208,9 +208,12 @@ async function completarFirma(req, res) {
     });
     await almacen.borrarBorrador(id);
     console.log(`Documento ${borrador.documentoId} creado para ${sellado.firmantes.map((f) => f.email).join(", ")}`);
+    // Una versión de sygners sin `firmaEnElNavegador` sella igual y manda el
+    // email: quien firma entra desde ahí.
+    if (!urlFirma) console.error(`sygners no devolvió el enlace de firma de ${borrador.documentoId}`);
     json(res, 200, {
       documentoId: borrador.documentoId,
-      urlDocumento: URL_DOCUMENTO.replace("{documentoId}", encodeURIComponent(borrador.documentoId)),
+      urlFirma: urlFirma ?? null,
       venceEl: sellado.venceEl,
       firmantes: sellado.firmantes,
     });

@@ -11,7 +11,9 @@
 //
 // Para que la clave de acceso no pase nunca por tu servidor, el cifrado puede
 // correr en el navegador: `iniciar` acá, `cifrarDocumento` de
-// `@sygners/sdk/navegador` allá, y `completar` acá con lo que devuelva.
+// `@sygners/sdk/navegador` allá, y `completar` acá con lo que devuelva. Con
+// `firmaEnElNavegador`, ese firmante recibe su enlace (`urlFirma`) en vez del
+// email, para abrir sygners desde el navegador con `abrirVentanaDeFirma`.
 import { sha256Hex } from "./cripto/hash";
 import { aBytes, cifrarParaSellar, type LlaveDeAcceso } from "./sellado";
 
@@ -60,6 +62,17 @@ export interface NuevoDocumento {
   metodoIdentidad?: MetodoIdentidad;
   // Idioma de las invitaciones y de la constancia.
   idioma?: Idioma;
+  // El email de UN firmante que firma ahora, desde tu navegador: no recibe la
+  // invitación por email y su enlace vuelve en `firmantes[].urlFirma`.
+  firmaEnElNavegador?: string;
+}
+
+export interface Firmante {
+  email: string;
+  estado: string;
+  // Sólo el de `firmaEnElNavegador`. Abre el documento para firmar: no lo
+  // guardes junto a la clave de acceso ni lo mandes por el mismo canal.
+  urlFirma?: string;
 }
 
 export interface DocumentoCreado {
@@ -68,7 +81,7 @@ export interface DocumentoCreado {
   claveDeAcceso: string;
   fileHash: string;
   venceEl: string | null;
-  firmantes: { email: string; estado: string }[];
+  firmantes: Firmante[];
   aviso: string;
 }
 
@@ -82,7 +95,7 @@ export interface DocumentoIniciado {
 
 export interface Sellado {
   venceEl: string | null;
-  firmantes: { email: string; estado: string }[];
+  firmantes: Firmante[];
 }
 
 export interface EstadoDocumento {
@@ -169,7 +182,12 @@ class Documentos {
     const plaintext = await aBytes(n.archivo);
     const ini = await this.iniciar({ ...n, archivo: plaintext });
     const { cifrado, llave, claveDeAcceso } = await cifrarParaSellar({ plaintext, documentoId: ini.documentoId, fileHash: ini.fileHash });
-    const sellado = await this.completar(ini.documentoId, { uploadToken: ini.uploadToken, cifrado, llave });
+    const sellado = await this.completar(ini.documentoId, {
+      uploadToken: ini.uploadToken,
+      cifrado,
+      llave,
+      firmaEnElNavegador: n.firmaEnElNavegador,
+    });
     return { documentoId: ini.documentoId, claveDeAcceso, fileHash: ini.fileHash, ...sellado, aviso: AVISO_CLAVE };
   }
 
@@ -196,11 +214,18 @@ class Documentos {
   }
 
   // Segunda mitad: sube el cifrado y sella con la llave. Acá se cobra y se
-  // invita a los firmantes.
-  async completar(id: string, c: { uploadToken: string; cifrado: Uint8Array; llave: LlaveDeAcceso }): Promise<Sellado> {
+  // invita a los firmantes (menos al de `firmaEnElNavegador`).
+  async completar(
+    id: string,
+    c: { uploadToken: string; cifrado: Uint8Array; llave: LlaveDeAcceso; firmaEnElNavegador?: string },
+  ): Promise<Sellado> {
     await this.llamar("subir", "PUT", `/documentos/${encodeURIComponent(id)}/cifrado`, c.cifrado, { "X-Upload-Token": c.uploadToken });
     const sellado = (await (
-      await this.llamar("sellar", "POST", `/documentos/${encodeURIComponent(id)}/sellar`, { uploadToken: c.uploadToken, keys: [c.llave] })
+      await this.llamar("sellar", "POST", `/documentos/${encodeURIComponent(id)}/sellar`, {
+        uploadToken: c.uploadToken,
+        keys: [c.llave],
+        firmaEnElNavegador: c.firmaEnElNavegador,
+      })
     ).json()) as Sellado;
     return { venceEl: sellado.venceEl, firmantes: sellado.firmantes };
   }

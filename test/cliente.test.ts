@@ -21,7 +21,11 @@ function apiFalsa(opts: { fallarEn?: string } = {}) {
     if (opts.fallarEn === paso) return json({ error: "Al plan no le alcanza el saldo.", codigo: "planSinSaldo" }, 402);
     if (paso === "iniciar") return json({ documentoId: "cdoc1", uploadToken: "tok1" }, 201);
     if (paso === "subir") return json({ ok: true });
-    if (paso === "sellar") return json({ venceEl: "2026-10-03T00:00:00.000Z", firmantes: [{ email: "a@b.c", estado: "PENDING" }] });
+    if (paso === "sellar") {
+      const enNavegador = JSON.parse(String(init.body)).firmaEnElNavegador;
+      const firmante = { email: "a@b.c", estado: "PENDING", ...(enNavegador === "a@b.c" ? { urlFirma: "https://ejemplo.test/sign/tokA" } : {}) };
+      return json({ venceEl: "2026-10-03T00:00:00.000Z", firmantes: [firmante] });
+    }
     return json({}, 404);
   }) as typeof fetch;
   return { f, llamadas };
@@ -109,4 +113,15 @@ test("iniciar + cifrarDocumento + completar: la clave nace en el navegador y no 
 test("cifrarDocumento rechaza un archivo distinto del iniciado", async () => {
   const fileHash = await sha256Hex(new Uint8Array([1, 2, 3]));
   await assert.rejects(cifrarDocumento({ archivo: new Uint8Array([4, 5, 6]), documentoId: "cdoc1", fileHash }), /hash no coincide/);
+});
+
+test("completar con firmaEnElNavegador: lo manda al sellar y devuelve la urlFirma de ese firmante", async () => {
+  const { f, llamadas } = apiFalsa();
+  const s = new Sygners({ apiKey: KEY, baseUrl: "https://ejemplo.test", fetch: f });
+  const archivo = new TextEncoder().encode("x");
+  const ini = await s.documentos.iniciar({ archivo, nombre: "x.txt", firmantes: ["a@b.c"] });
+  const { cifrado, llave } = await cifrarDocumento({ archivo, documentoId: ini.documentoId, fileHash: ini.fileHash });
+  const r = await s.documentos.completar(ini.documentoId, { uploadToken: ini.uploadToken, cifrado, llave, firmaEnElNavegador: "a@b.c" });
+  assert.equal(JSON.parse(llamadas[2].cuerpo as string).firmaEnElNavegador, "a@b.c");
+  assert.deepEqual(r.firmantes, [{ email: "a@b.c", estado: "PENDING", urlFirma: "https://ejemplo.test/sign/tokA" }]);
 });

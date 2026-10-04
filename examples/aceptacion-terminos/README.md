@@ -11,19 +11,20 @@ se va completando a medida que carga **nombre, DNI y email** (`POST /api/muestra
 no se puede firmar). **Ver documento** arma el PDF definitivo. El PDF no lleva firma a mano: la firma
 se hace en sygners. Al tocar **Firmar**:
 
-1. el servidor inicia el documento (`documentos.iniciar`) y le pasa al navegador el id y el hash;
-2. el navegador genera la **clave de acceso** y cifra el PDF con `@sygners/sdk/navegador`;
-3. el servidor sube el cifrado y sella (`documentos.completar`);
-4. el navegador guarda la clave en `sessionStorage` y abre el documento en sygners con la clave en
-   el fragmento de la URL (`/documents/<id>#clave=…`), que el navegador no manda a ningún servidor.
+1. se abre una pestaña para sygners, todavía en blanco (en el mismo click: si no, el navegador la
+   bloquea como popup);
+2. el servidor inicia el documento (`documentos.iniciar`) y le pasa al navegador el id y el hash;
+3. el navegador genera la **clave de acceso** y cifra el PDF con `@sygners/sdk/navegador`;
+4. el servidor sube el cifrado y sella (`documentos.completar`) con `firmaEnElNavegador`: a quien
+   firma no le llega el email de invitación, y su enlace de firma (`urlFirma`) vuelve al navegador;
+5. el navegador lleva la pestaña a `urlFirma` y, cuando sygners avisa que está lista, le entrega la
+   clave con `postMessage`. sygners la guarda en su `sessionStorage`, abre el documento sin pedirla,
+   y la borra al firmar.
 
-**La clave de acceso nunca pasa por el servidor del ejemplo.** También queda en el `localStorage`
-(lista **Documentos para firmar**), para volver a abrir el documento. sygners igual manda su
-invitación por email.
-
-> Para que sygners abra el documento sin pedir la clave, su página `/documents/[id]` tiene que leer
-> el fragmento: `tomarClaveDelFragmento(id)` de `@sygners/sdk/navegador` hace eso (la pasa a su
-> `sessionStorage` y la saca de la URL). Mientras sygners no lo haga, la clave se pega a mano.
+**La clave de acceso nunca pasa por el servidor del ejemplo ni va en una URL.** También queda en el
+`localStorage` de este navegador, con el enlace (lista **Documentos para firmar**), para volver a
+abrir sygners con **Ir a firmar** si se cerró la pestaña. Si sygners no devuelve el enlace (una
+versión sin `firmaEnElNavegador`), manda la invitación por email como siempre.
 
 ```
 navegador                         server.mjs                          sygners
@@ -42,10 +43,12 @@ Firmar ─────────────────────▶ POST /
 genera la clave y cifra el PDF
 (@sygners/sdk/navegador)
 cifrado + llave ────────────▶ POST /api/firmar/completar
-                               documentos.completar ───────────▶ sube, sella, invita por email
-             urlDocumento ◀──  el link queda usado
-clave → sessionStorage
-abre sygners ───────────────────────────────────────────────────▶ /documents/<id>#clave=…
+                               documentos.completar ───────────▶ sube y sella; a quien firma
+                                 (firmaEnElNavegador)              no le manda el email
+                 urlFirma ◀──  el link queda usado
+pestaña de sygners → urlFirma ──────────────────────────────────▶ /sign/<token>
+                       clave ◀───── postMessage ─────────────────  "lista para la clave"
+                                                                    (sessionStorage de sygners)
 ```
 
 Lo que se firma es exactamente el PDF que se previsualizó: el servidor guarda el borrador y
@@ -72,7 +75,6 @@ npm start              # http://localhost:3000
 | ------------------- | ----------------------------------------------------------------------- |
 | `SYGNERS_API_KEY`   | Obligatoria. "Mi plan" → *Integración (API)*.                           |
 | `SYGNERS_BASE_URL`  | Opcional. Otra URL de la API (por ejemplo, stage).                      |
-| `SYGNERS_URL_FIRMA` | Opcional. La página del documento en sygners; `{documentoId}` se reemplaza. Default `<SYGNERS_BASE_URL>/documents/{documentoId}`. |
 | `FIRMANTES_EXTRA`   | Opcional. Emails que firman siempre además del usuario, separados por coma. |
 | `PORT`              | Opcional. Default `3000`.                                               |
 

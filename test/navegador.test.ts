@@ -1,44 +1,76 @@
-// La entrega de la clave a sygners: fragmento + sessionStorage, sin servidor.
+// La entrega de la clave a sygners con postMessage: nunca en una URL.
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { urlParaFirmar, abrirParaFirmar, tomarClaveDelFragmento, leerClave } from "../src/navegador";
+import { abrirVentanaDeFirma, VentanaBloqueadaError, MENSAJE_CLAVE, MENSAJE_LISTO } from "../src/navegador";
 
-// Un navegador mínimo: location, history y sessionStorage.
-let url: URL;
-let asignada: string | null;
+const ORIGEN = "https://sygners.test";
+const URL_FIRMA = `${ORIGEN}/sign/tok123`;
+
+// Un navegador mínimo: window.open, la pestaña abierta y los mensajes.
+let oyentes: ((e: MessageEvent) => void)[];
+let pestaña: {
+  location: { href: string };
+  document: { title: string; body: { textContent: string; style: { cssText: string } } };
+  recibidos: { data: unknown; origen: string }[];
+  postMessage: (data: unknown, origen: string) => void;
+  close: () => void;
+  cerrada: boolean;
+};
+let bloquear: boolean;
+
 beforeEach(() => {
-  url = new URL("https://demo.test/");
-  asignada = null;
-  const datos = new Map<string, string>();
-  Object.assign(globalThis, {
-    sessionStorage: { getItem: (k: string) => datos.get(k) ?? null, setItem: (k: string, v: string) => void datos.set(k, v) },
-    location: {
-      get hash() { return url.hash; },
-      get pathname() { return url.pathname; },
-      get search() { return url.search; },
-      assign: (u: string) => { asignada = u; },
+  oyentes = [];
+  bloquear = false;
+  pestaña = {
+    location: { href: "about:blank" },
+    document: { title: "", body: { textContent: "", style: { cssText: "" } } },
+    recibidos: [],
+    postMessage(data, origen) {
+      this.recibidos.push({ data, origen });
     },
-    history: { state: null, replaceState: (_s: unknown, _t: string, u: string) => { url = new URL(u, url); } },
+    close() {
+      this.cerrada = true;
+    },
+    cerrada: false,
+  };
+  Object.assign(globalThis, {
+    window: { open: () => (bloquear ? null : pestaña) },
+    addEventListener: (_t: string, f: (e: MessageEvent) => void) => oyentes.push(f),
+    removeEventListener: (_t: string, f: (e: MessageEvent) => void) => (oyentes = oyentes.filter((o) => o !== f)),
   });
 });
 
-test("urlParaFirmar pone la clave en el fragmento, no en la query", () => {
-  const u = new URL(urlParaFirmar("https://sygners.test/documents/cdoc1", "K7QM2XB9FTZ4"));
-  assert.equal(u.search, "");
-  assert.equal(u.hash, "#clave=K7QM2XB9FTZ4");
+const avisar = (source: unknown, origin: string, data: unknown) =>
+  oyentes.slice().forEach((f) => f({ source, origin, data } as MessageEvent));
+
+test("abre en blanco, navega a urlFirma sin la clave y la entrega sólo al origen de sygners", async () => {
+  const v = abrirVentanaDeFirma();
+  assert.equal(pestaña.location.href, "about:blank");
+  const entregada = v.entregar({ urlFirma: URL_FIRMA, claveDeAcceso: "K7QM2XB9FTZ4" });
+  assert.equal(pestaña.location.href, URL_FIRMA);
+  assert.ok(!String(pestaña.location.href).includes("K7QM2XB9FTZ4"));
+
+  // Mensajes que no corresponden: otra ventana, otro origen, otro tipo.
+  avisar({}, ORIGEN, { tipo: MENSAJE_LISTO });
+  avisar(pestaña, "https://otro.test", { tipo: MENSAJE_LISTO });
+  avisar(pestaña, ORIGEN, { tipo: "otra-cosa" });
+  assert.equal(pestaña.recibidos.length, 0);
+
+  avisar(pestaña, ORIGEN, { tipo: MENSAJE_LISTO });
+  await entregada;
+  assert.deepEqual(pestaña.recibidos, [{ data: { tipo: MENSAJE_CLAVE, clave: "K7QM2XB9FTZ4" }, origen: ORIGEN }]);
+  // Una sola vez: deja de escuchar.
+  avisar(pestaña, ORIGEN, { tipo: MENSAJE_LISTO });
+  assert.equal(pestaña.recibidos.length, 1);
+  assert.equal(oyentes.length, 0);
 });
 
-test("abrirParaFirmar guarda la clave y navega", () => {
-  abrirParaFirmar({ urlDocumento: "https://sygners.test/documents/cdoc1", documentoId: "cdoc1", claveDeAcceso: "K7QM2XB9FTZ4" });
-  assert.equal(leerClave("cdoc1"), "K7QM2XB9FTZ4");
-  assert.equal(asignada, "https://sygners.test/documents/cdoc1#clave=K7QM2XB9FTZ4");
+test("con la pestaña bloqueada, lo dice", () => {
+  bloquear = true;
+  assert.throws(() => abrirVentanaDeFirma(), VentanaBloqueadaError);
 });
 
-test("tomarClaveDelFragmento la pasa a sessionStorage y la saca de la URL", () => {
-  url = new URL("https://sygners.test/documents/cdoc1?x=1#clave=K7QM2XB9FTZ4&otro=2");
-  assert.equal(tomarClaveDelFragmento("cdoc1"), "K7QM2XB9FTZ4");
-  assert.equal(url.toString(), "https://sygners.test/documents/cdoc1?x=1#otro=2");
-  // Al recargar, sin fragmento, sale de sessionStorage.
-  assert.equal(tomarClaveDelFragmento("cdoc1"), "K7QM2XB9FTZ4");
-  assert.equal(tomarClaveDelFragmento("otro-doc"), null);
+test("cerrar cierra la pestaña", () => {
+  abrirVentanaDeFirma().cerrar();
+  assert.equal(pestaña.cerrada, true);
 });

@@ -334,25 +334,39 @@
     });
 
     // ── Firma ─────────────────────────────────────────────────────────────
-    // La clave de acceso nace acá y no pasa por el servidor:
+    // La clave de acceso nace acá y nunca pasa por el servidor ni va en una URL:
+    //   0. al tocar "Firmar" se abre la pestaña de sygners (en el mismo click,
+    //      o el navegador la bloquea);
     //   1. el servidor inicia el documento y devuelve su id y el hash del PDF;
     //   2. el SDK genera la clave y cifra el PDF en este navegador;
-    //   3. el servidor sube el cifrado y sella;
-    //   4. el SDK guarda la clave en sessionStorage y abre el documento en
-    //      sygners con la clave en el fragmento (#clave=…), que no llega a
-    //      ningún servidor.
-    const sdk = () => import("/sygners-navegador.js");
+    //   3. el servidor sube el cifrado, sella y devuelve el enlace de firma;
+    //   4. el SDK lleva la pestaña al enlace y, cuando sygners la pide, le
+    //      entrega la clave con postMessage.
+    // El SDK se carga de entrada: abrir la pestaña no puede esperar a bajarlo.
+    let sdk = null;
+    import("/sygners-navegador.js").then((m) => (sdk = m));
+
+    function abrirVentana() {
+      if (!sdk) throw new Error("Todavía se está cargando la página. Probá de nuevo en un segundo.");
+      return sdk.abrirVentanaDeFirma();
+    }
 
     btnFirmar.addEventListener("click", async () => {
       if (!borrador || !pdfDefinitivo) return;
       error.textContent = "";
+      let ventana = null;
+      try {
+        ventana = abrirVentana();
+      } catch (e) {
+        error.textContent = e.message;
+        return;
+      }
       btnFirmar.disabled = true;
       btnPrevia.disabled = true;
       btnFirmar.textContent = "Cifrando…";
       try {
-        const { cifrarDocumento, abrirParaFirmar } = await sdk();
         const ini = await postJson("/api/firmar/iniciar", { borrador });
-        const { cifrado, llave, claveDeAcceso } = await cifrarDocumento({
+        const { cifrado, llave, claveDeAcceso } = await sdk.cifrarDocumento({
           archivo: pdfDefinitivo,
           documentoId: ini.documentoId,
           fileHash: ini.fileHash,
@@ -360,11 +374,19 @@
         btnFirmar.textContent = "Enviando…";
         const d = await postJson("/api/firmar/completar", { borrador, cifrado: aBase64(cifrado), llave });
         borrador = null;
-        guardarEnviado({ ...d, claveDeAcceso, nombre: $("nombre").value.trim(), enviadoEl: new Date().toISOString() });
+        const doc = { ...d, claveDeAcceso, nombre: $("nombre").value.trim(), enviadoEl: new Date().toISOString() };
+        guardarEnviado(doc);
         limpiar();
-        mostrarEstado("Abriendo sygners…", "Tu código quedó guardado en este navegador, más abajo, en “Documentos para firmar”.");
-        abrirParaFirmar({ urlDocumento: d.urlDocumento, documentoId: d.documentoId, claveDeAcceso });
+        if (d.urlFirma) {
+          ventana.entregar({ urlFirma: d.urlFirma, claveDeAcceso });
+          mostrarEstado("Seguí en la pestaña de sygners", "Ahí ves el documento y lo firmás. Si la cerraste, tocá “Ir a firmar” más abajo, en “Documentos para firmar”.");
+        } else {
+          // sygners no devolvió el enlace: la invitación llegó por email.
+          ventana.cerrar();
+          mostrarEstado("Revisá tu email", "sygners te mandó la invitación para firmar. Vas a necesitar el código que quedó más abajo, en “Documentos para firmar”.");
+        }
       } catch (e) {
+        ventana.cerrar();
         error.textContent = e.message || "No se pudo preparar el documento.";
         btnFirmar.disabled = !borrador;
       } finally {
@@ -403,7 +425,7 @@
     function mostrarModal(d) {
       $("modal-titulo").textContent = "Código de acceso";
       $("modal-bajada").textContent = `Documento de ${d.nombre}. Para abrirlo en sygners vas a necesitar este código:`;
-      documentoModal = d.urlDocumento ? d : null;
+      documentoModal = d.urlFirma ? d : null;
       $("ir-firmar").hidden = !documentoModal;
       $("clave").textContent = d.claveDeAcceso;
       $("aviso").textContent = d.aviso ?? "";
@@ -425,9 +447,13 @@
       else getSelection().selectAllChildren($("clave"));
     });
 
-    $("ir-firmar").addEventListener("click", async () => {
-      const { abrirParaFirmar } = await sdk();
-      abrirParaFirmar(documentoModal);
+    $("ir-firmar").addEventListener("click", () => {
+      try {
+        abrirVentana().entregar(documentoModal);
+        modal.close();
+      } catch (e) {
+        alert(e.message);
+      }
     });
 
     $("whatsapp").addEventListener("click", () => {
